@@ -39,11 +39,11 @@ export default function CreateShipment() {
 
   const fetchData = async () => {
     const [ordersRes, carriersRes, portsRes, containersRes, moreOrdersRes] = await Promise.all([
-      supabase.from("export_orders").select("id, order_number, customer_name").eq("status", "shipped").order("created_at", { ascending: false }),
+      supabase.from("export_orders").select("id, order_number, customer_name, quantity, unit").eq("status", "shipped").order("created_at", { ascending: false }),
       supabase.from("shipping_carriers").select("name, code").order("name"),
       supabase.from("shipping_ports").select("name, country, code").order("name"),
       supabase.from("container_types").select("name").order("name"),
-      supabase.from("export_orders").select("id, order_number, customer_name").in("status", ["confirmed", "processing"]).order("created_at", { ascending: false })
+      supabase.from("export_orders").select("id, order_number, customer_name, quantity, unit").in("status", ["confirmed", "processing"]).order("created_at", { ascending: false })
     ]);
 
     let allOrders = [];
@@ -96,6 +96,11 @@ export default function CreateShipment() {
       const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
       const shipmentNumber = `SHP-${new Date().getFullYear()}-${rand}`;
 
+      // Calculate weight per container
+      const totalWeight = Number(selectedOrder?.quantity) || 0;
+      const count = parseInt(containerCount) || 1;
+      const weightPerContainer = totalWeight / count;
+
       // Insert shipment
       const { data: shipment, error: shipErr } = await supabase.from("export_shipments").insert({
         order_id: orderId,
@@ -111,19 +116,19 @@ export default function CreateShipment() {
 
       if (shipErr) throw shipErr;
 
-      // Insert containers
-      const count = parseInt(containerCount) || 1;
+      // Insert containers with pre-filled weights
       const containersToInsert = Array.from({ length: count }).map((_, i) => ({
         shipment_id: shipment.id,
         container_number: `TBD-${i+1}`,
         container_type: containerType,
+        weight_kg: weightPerContainer,
         status: 'Pending'
       }));
 
       const { error: contErr } = await supabase.from("export_containers").insert(containersToInsert);
       if (contErr) throw contErr;
 
-      toast.success("Shipment created successfully!");
+      toast.success("Shipment created with automatic weight distribution!");
       nav("/shipments");
     } catch (err: any) {
       toast.error(err.message || "Failed to create shipment");

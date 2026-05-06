@@ -57,6 +57,9 @@ export default function CreateOrder() {
   const [currency, setCurrency] = useState("USD");
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
+  const [hsnCode, setHsnCode] = useState("");
+  const [incoterms, setIncoterms] = useState("CIF");
+  const [packingDetails, setPackingDetails] = useState("");
   const [notes, setNotes] = useState("");
 
   const totalAmount = (Number(quantity) || 0) * (Number(unitPrice) || 0);
@@ -90,6 +93,9 @@ export default function CreateOrder() {
         currency,
         expected_delivery: expectedDelivery ? new Date(expectedDelivery).toISOString() : null,
         shipping_address: shippingAddress,
+        hsn_code: hsnCode,
+        incoterms: incoterms,
+        packing_details: packingDetails,
         notes,
         created_by: userId,
         status: 'pending',
@@ -226,6 +232,26 @@ export default function CreateOrder() {
               <Input type="date" value={expectedDelivery} onChange={e => setExpectedDelivery(e.target.value)} />
             </div>
             <div className="space-y-2">
+              <Label>Trade Terms (Incoterms)</Label>
+              <Select value={incoterms} onValueChange={setIncoterms}>
+                <SelectTrigger><SelectValue placeholder="Select Terms" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CIF">CIF (Cost, Insurance, Freight)</SelectItem>
+                  <SelectItem value="FOB">FOB (Free On Board)</SelectItem>
+                  <SelectItem value="EXW">EXW (Ex Works)</SelectItem>
+                  <SelectItem value="CNF">CNF (Cost and Freight)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>HSN Code</Label>
+              <Input value={hsnCode} onChange={e => setHsnCode(e.target.value)} placeholder="e.g. 08039010" />
+            </div>
+            <div className="space-y-2">
+              <Label>Packing Details</Label>
+              <Input value={packingDetails} onChange={e => setPackingDetails(e.target.value)} placeholder="e.g. 13 Kg per box" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
               <Label>Notes</Label>
               <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Terms, logistics details..." />
             </div>

@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function ContainerTracking() {
   const [containers, setContainers] = useState<any[]>([]);
@@ -30,11 +31,12 @@ export default function ContainerTracking() {
 
         // Map database records to the table format
         const formattedData = (data || []).map(c => ({
+          dbId: c.id, // Keep original DB ID for updates
           id: c.container_number,
           shipmentId: c.export_shipments?.shipment_number || "Unknown",
           type: c.container_type,
-          weight: c.weight_kg ? `${c.weight_kg} kg` : 'TBD',
-          status: c.status || c.export_shipments?.status || "Pending",
+          weight: c.weight_kg,
+          status: c.status || "Pending",
           location: c.export_shipments?.status === "Delivered" 
             ? c.export_shipments?.destination_port 
             : c.export_shipments?.status === "In Transit" 
@@ -53,6 +55,21 @@ export default function ContainerTracking() {
     fetchContainers();
   }, []);
 
+  const updateContainer = async (id: string, field: string, value: any) => {
+    try {
+      const { error } = await supabase
+        .from("export_containers")
+        .update({ [field]: value })
+        .eq("id", id);
+      if (error) throw error;
+      
+      toast.success(`Container ${field} updated`);
+      setContainers(prev => prev.map(c => c.dbId === id ? { ...c, [field === 'status' ? 'status' : 'weight']: value } : c));
+    } catch (err: any) {
+      toast.error("Failed to update container");
+    }
+  };
+
   return (
     <div>
       <PageHeader 
@@ -70,12 +87,44 @@ export default function ContainerTracking() {
           data={containers}
           searchKeys={["id", "shipmentId", "location"]}
           columns={[
-            { key: "id", header: "Container", render: (r) => <span className="font-mono text-xs">{r.id}</span> },
+            { key: "id", header: "Container", render: (r) => (
+              <input 
+                type="text" 
+                className="font-mono text-xs font-bold w-full bg-transparent border-b border-transparent hover:border-primary focus:border-primary transition-colors outline-none"
+                defaultValue={r.id}
+                onBlur={(e) => updateContainer(r.dbId, 'container_number', e.target.value)}
+                placeholder="Enter #..."
+              />
+            )},
             { key: "shipment", header: "Shipment", render: (r) => <span className="text-xs text-muted-foreground">{r.shipmentId}</span> },
             { key: "type", header: "Type", render: (r) => r.type },
-            { key: "weight", header: "Weight", render: (r) => <span className="tabular-nums">{r.weight}</span> },
-            { key: "loc", header: "Location", render: (r) => r.location },
-            { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
+            { key: "weight", header: "Weight", render: (r) => (
+              <div className="flex items-center gap-1">
+                <input 
+                  type="number" 
+                  className="w-16 h-8 bg-transparent border-b border-transparent hover:border-primary focus:border-primary transition-colors px-1 text-xs outline-none"
+                  defaultValue={r.weight || ""}
+                  onBlur={(e) => updateContainer(r.dbId, 'weight_kg', e.target.value)}
+                  placeholder="0"
+                />
+                <span className="text-[10px] text-muted-foreground">kg</span>
+              </div>
+            )},
+            { key: "loc", header: "Location", render: (r) => <span className="text-xs">{r.location}</span> },
+            { key: "status", header: "Status", render: (r) => (
+              <Select value={r.status} onValueChange={(val) => updateContainer(r.dbId, 'status', val)}>
+                <SelectTrigger className="h-8 w-[120px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Loaded">Loaded</SelectItem>
+                  <SelectItem value="Gate-Out">Gate-Out</SelectItem>
+                  <SelectItem value="At Sea">At Sea</SelectItem>
+                  <SelectItem value="Delivered">Delivered</SelectItem>
+                </SelectContent>
+              </Select>
+            )},
           ]}
         />
       )}
