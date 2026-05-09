@@ -21,3 +21,4 @@ ALTER TABLE public.quotations
 
 -- Refresh schema cache
 NOTIFY pgrst, 'reload schema';
+
