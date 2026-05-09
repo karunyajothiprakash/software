@@ -152,8 +152,7 @@ export default function CreateQuotation() {
         quotation_id: quoteData.id,
         product_id: i.product_id || null, 
         quantity: Number(i.qty),
-        unit_price: Number(i.price),
-        total_price: Number(i.qty) * Number(i.price)
+        unit_price: Number(i.price)
       }));
 
       if (insertItems.length > 0) {
