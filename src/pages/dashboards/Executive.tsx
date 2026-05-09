@@ -3,11 +3,11 @@ import { StatCard } from "@/components/shared/StatCard";
 import { Section } from "@/components/shared/FormShell";
 import { DollarSign, Package, Ship, TrendingUp, Users, AlertCircle } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { salesByMonth, revenueByCountry, shipmentStatusBreakdown, notifications } from "@/data/mock";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { WorkflowHelper } from "@/components/dashboard/WorkflowHelper";
 
 export default function ExecutiveDashboard() {
   const { data: realSales, error: salesError } = useQuery({
@@ -50,33 +50,21 @@ export default function ExecutiveDashboard() {
     retry: false
   });
 
-  // Graceful fallback: If Supabase errors out (realSales is undefined), use mock data.
-  // If it's an empty array [], it means connected successfully but no data!
-  const isLive = realSales !== undefined && realCountries !== undefined;
-  
-  const chartSales = isLive ? realSales : salesByMonth;
-  const chartShipments = isLive 
-    ? (realShipments || []).map((s: any, i: number) => ({ ...s, color: `hsl(var(--chart-${(i % 5) + 1}))` })) 
-    : shipmentStatusBreakdown;
-  const displayNotifications = isLive ? (realNotifications || []) : notifications;
+  // Calculate live stats
+  const chartSales = realSales || [];
+  const chartShipments = (realShipments || []).map((s: any, i: number) => ({ ...s, color: `hsl(var(--chart-${(i % 5) + 1}))` }));
+  const displayNotifications = realNotifications || [];
 
-  // Calculate live stats or use mock
-  const totalRevenue = isLive 
-    ? (realSales || []).reduce((sum: number, item: any) => sum + Number(item.revenue || 0), 0)
-    : 892000;
-  
-  // For active orders, we sum up the counts if we have them, otherwise just mock it as 3 for the demo since we inserted 3 orders
-  const activeOrders = isLive ? 3 : 52;
-    
-  const inTransit = isLive
-    ? (realShipments || []).find((s: any) => s.name === 'In Transit')?.value || 0
-    : 38;
+  const totalRevenue = chartSales.reduce((sum: number, item: any) => sum + Number(item.revenue || 0), 0);
+  const activeOrders = chartSales.reduce((sum: number, item: any) => sum + Number(item.orders || 0), 0);
+  const inTransit = (realShipments || []).find((s: any) => s.name === 'In Transit')?.value || 0;
 
-  // Map the backend 'name' and 'value' columns to 'country' and 'revenue' for the Recharts component
-  const mappedCountries = isLive 
-    ? (realCountries || []).map((c: any) => ({ country: c.name, revenue: c.value }))
-    : revenueByCountry;
-  const chartCountries = mappedCountries;
+  const chartCountries = (realCountries || []).map((c: any) => ({ 
+    country: c.country || "Unknown", 
+    revenue: Number(c.revenue || 0) 
+  }));
+
+  const isLive = !!realSales;
 
   const handleGenerateReport = () => {
     // Generate CSV content
@@ -140,6 +128,8 @@ export default function ExecutiveDashboard() {
           </div>
         </div>
       </div>
+
+      <WorkflowHelper />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
         <StatCard label="Total Revenue" value={`$${(totalRevenue/1000).toFixed(0)}K`} delta={{ value: isLive ? "Live" : "+19.7%", positive: true }} hint="from database" icon={<DollarSign className="h-4 w-4" />} />

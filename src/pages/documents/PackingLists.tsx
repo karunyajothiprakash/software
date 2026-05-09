@@ -1,26 +1,29 @@
 import { useState, useEffect } from "react";
-import { FileBox, Package, Loader2 } from "lucide-react";
+import { FileBox, Package, Loader2, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { Section } from "@/components/shared/FormShell";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
 export default function PackingLists() {
-  const [shipments, setShipments] = useState<any[]>([]);
+  const [packingLists, setPackingLists] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchPLs = async () => {
+      setLoading(true);
       try {
         const { data, error } = await supabase
-          .from("export_shipments")
-          .select("*, export_containers(count)")
+          .from("export_orders")
+          .select("*, export_shipments(*)")
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        setShipments(data || []);
+        setPackingLists(data || []);
       } catch (err) {
+        console.error("PL load error:", err);
         toast.error("Failed to load packing lists");
       } finally {
         setLoading(false);
@@ -29,37 +32,86 @@ export default function PackingLists() {
     fetchPLs();
   }, []);
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this packing list?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("export_orders")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+      toast.success("Deleted successfully");
+      setPackingLists(prev => prev.filter(pl => pl.id !== id));
+    } catch (err: any) {
+      toast.error("Failed to delete: " + err.message);
+    }
+  };
+
   return (
-    <div>
-      <PageHeader title="Packing Lists" description="Per-shipment packing list documents" breadcrumbs={[{ label: "Documents" }, { label: "Packing Lists" }]} />
+    <div className="space-y-6">
+      <PageHeader 
+        title="Packing Lists" 
+        description="Manage and print shipment packing lists" 
+        breadcrumbs={[{ label: "Documents" }, { label: "Packing Lists" }]} 
+      />
       
       {loading ? (
         <div className="flex justify-center p-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      ) : shipments.length === 0 ? (
-        <div className="text-center p-12 border border-dashed rounded-lg">
-          <Package className="h-12 w-12 mx-auto text-muted-foreground opacity-50 mb-4" />
-          <p className="text-muted-foreground">No active packing lists found.</p>
-        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {shipments.map((s) => (
-            <Section key={s.id}>
-              <div className="flex items-start justify-between mb-3">
-                <div className="h-10 w-10 rounded-md bg-blue-500/10 text-blue-600 flex items-center justify-center">
-                  <FileBox className="h-5 w-5" />
-                </div>
-                <StatusBadge status={s.status} />
-              </div>
-              <div className="font-bold text-sm">PL-{s.shipment_number?.slice(4)}</div>
-              <div className="text-xs text-muted-foreground mt-1 font-medium">{s.customer_name}</div>
-              <div className="text-[11px] text-muted-foreground mt-3 flex justify-between border-t pt-2 border-border">
-                <span>{s.export_containers?.[0]?.count || 0} Containers</span>
-                <span>To: {s.destination_port}</span>
-              </div>
-            </Section>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {packingLists.map((pl) => {
+            const shipmentId = pl.export_shipments?.[0]?.id;
+            return (
+              <Card key={pl.id} className="overflow-hidden border-primary/10 hover:border-primary/30 transition-all">
+                <CardHeader className="bg-muted/30 pb-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2">
+                      <FileBox className="h-5 w-5 text-primary" />
+                      <span className="font-mono text-sm font-bold">{pl.order_number?.replace('EXP', 'PL')}</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(pl.id)} className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      <StatusBadge status={pl.status} />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Customer</p>
+                    <p className="font-bold">{pl.customer_name}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Product</p>
+                      <div className="flex items-center gap-1">
+                        <Package className="h-3 w-3 text-primary" />
+                        <span className="text-sm font-medium">{pl.product}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Quantity</p>
+                      <p className="text-sm font-medium tabular-nums">{pl.quantity} {pl.unit}</p>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="bg-muted/10 border-t p-3">
+                  <Button 
+                    className="w-full" 
+                    variant="outline" 
+                    onClick={() => window.open(`/packing-lists/${shipmentId || pl.id}/preview`, '_blank')}
+                  >
+                    VIEW PDF
+                  </Button>
+                </CardFooter>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

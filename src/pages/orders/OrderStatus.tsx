@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Package, Clock, Truck, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500",
@@ -17,6 +18,10 @@ const STATUS_COLORS: Record<string, string> = {
 export default function OrderStatus() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const getCount = (statuses: string[]) => {
+    return orders.filter(o => statuses.includes(o.status)).length;
+  };
 
   useEffect(() => {
     const fetchOrders = async () => {

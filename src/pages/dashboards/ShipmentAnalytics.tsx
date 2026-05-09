@@ -4,7 +4,6 @@ import { Section } from "@/components/shared/FormShell";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useState } from "react";
-import { shipments as mockShipments } from "@/data/mock";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsAdminOrManager } from "@/hooks/useAuth";
@@ -71,27 +70,25 @@ export default function ShipmentAnalytics() {
     retry: false
   });
 
-  const isLive = realShipments !== undefined && !shipmentsError;
-
   // Map the nested Supabase relational data into the flat structure expected by the DataTable
-  const displayShipments = isLive 
-    ? (realShipments || []).map((s: any) => ({
-        id: s.tracking_number || s.id.substring(0, 8),
-        dbId: s.id,
-        customer: s.sales_orders?.customers?.name || 'Unknown',
-        origin: s.origin || 'Mumbai, IN',
-        destination: s.destination || '—',
-        carrier: s.carrier || 'Maersk',
-        status: s.status,
-        eta: s.eta_date
-          ? new Date(s.eta_date).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' })
-          : new Date(new Date(s.created_at).getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' })
-      }))
-    : mockShipments;
+  const displayShipments = (realShipments || []).map((s: any) => ({
+    id: s.tracking_number || s.id.substring(0, 8),
+    dbId: s.id,
+    customer: s.sales_orders?.customers?.name || 'Unknown',
+    origin: s.origin || 'Mumbai, IN',
+    destination: s.destination || '—',
+    carrier: s.carrier || 'Maersk',
+    status: s.status,
+    eta: s.eta_date
+      ? new Date(s.eta_date).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' })
+      : new Date(new Date(s.created_at).getTime() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' })
+  }));
+
+  const isLive = !!realShipments;
 
   // Live total calculations
-  const activeContainers = isLive ? displayShipments.length : 38;
-  const delayed = isLive ? displayShipments.filter((s: any) => s.status === 'Delayed').length : 3;
+  const activeContainers = displayShipments.length;
+  const delayed = displayShipments.filter((s: any) => s.status === 'Delayed').length;
 
   return (
     <div>

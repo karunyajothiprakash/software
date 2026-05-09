@@ -2,7 +2,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { Section } from "@/components/shared/FormShell";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { salesByMonth } from "@/data/mock";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 
@@ -17,20 +16,10 @@ export default function SalesAnalytics() {
     retry: false
   });
 
-  const isLive = realSales !== undefined && !salesError;
-
-  // Map data and add a visual mock for 'orders' if it's missing from the view so the chart isn't empty
-  const chartSales = isLive 
-    ? (realSales || []).map((s: any) => ({ 
-        ...s, 
-        orders: s.orders || Math.floor(Number(s.revenue) / 50000) + 1 
-      }))
-    : salesByMonth;
-
-  // Live total calculations
-  const totalRevenue = isLive 
-    ? (realSales || []).reduce((sum: number, item: any) => sum + Number(item.revenue || 0), 0)
-    : 1840000;
+  // Calculate live stats
+  const chartSales = realSales || [];
+  const totalRevenue = chartSales.reduce((sum: number, item: any) => sum + Number(item.revenue || 0), 0);
+  const isLive = !!realSales;
 
   return (
     <div>

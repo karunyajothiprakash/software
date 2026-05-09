@@ -37,11 +37,24 @@ export default function CreatePOLive() {
   useEffect(() => {
     const fetchSuppliers = async () => {
       try {
-        const { data, error } = await supabase.from("suppliers").select("id, name").eq("status", "active");
+        // Fetching from 'farmers' table as they are the primary suppliers in this ERP
+        const { data, error } = await supabase
+          .from("farmers")
+          .select("id, full_name")
+          .eq("is_active", true);
+          
         if (error) throw error;
-        setSuppliers(data || []);
+        
+        // Map farmers to a standard supplier format for the UI
+        const mappedSuppliers = (data || []).map(f => ({
+          id: f.id,
+          name: f.full_name
+        }));
+        
+        setSuppliers(mappedSuppliers);
       } catch (err: any) {
-        toast.error("Failed to load suppliers");
+        toast.error("Failed to load suppliers/farmers");
+        console.error("Fetch error:", err);
       } finally {
         setLoading(false);
       }
@@ -70,26 +83,26 @@ export default function CreatePOLive() {
 
     setSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
+      // Fetch user's company_id
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('company_id')
+        .eq('id', userId)
+        .single();
 
-      if (!userId) throw new Error("Authentication required");
-
-      const cleanItems = items.map(({ id, ...rest }) => rest);
-      
-      // Auto generate PO Number like PO-2026-001
-      const year = new Date().getFullYear();
-      const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-      const poNumber = `PO-${year}-${rand}`;
+      if (profileError || !profile?.company_id) {
+        throw new Error("Could not determine your company ID");
+      }
 
       const { error } = await supabase.from("purchase_orders").insert({
+        company_id: profile.company_id,
         po_number: poNumber,
-        supplier_id: supplierId,
+        farmer_id: supplierId, // Using farmer_id
         status,
         expected_delivery: expectedDate ? new Date(expectedDate).toISOString() : null,
-        total_amount: totalAmount,
+        total: totalAmount,
         currency,
-        items: cleanItems,
+        items: cleanItems, // Now supported via new migration
         notes,
         created_by: userId
       });
@@ -110,58 +123,70 @@ export default function CreatePOLive() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="icon" onClick={() => navigate("/procurement/orders")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Create Purchase Order</h1>
-          <p className="text-sm text-muted-foreground">Draft a new order to a supplier</p>
+    <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/procurement/orders")} className="rounded-full hover:bg-white/5 transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-white">Create Purchase Order</h1>
+            <p className="text-sm text-muted-foreground mt-1">Draft a new professional order to your supplier</p>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-lg">Order Items</CardTitle>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-2 erp-card overflow-hidden">
+          <CardHeader className="border-b border-white/5 bg-white/2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xl font-semibold flex items-center gap-2">
+                <span className="w-1 h-6 bg-primary rounded-full" />
+                Order Items
+              </CardTitle>
+              <div className="text-xs text-muted-foreground font-mono bg-white/5 px-2 py-1 rounded">
+                ITEMS: {items.length}
+              </div>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="border rounded-md">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="w-24">Qty</TableHead>
-                    <TableHead className="w-28">Unit</TableHead>
-                    <TableHead className="w-32">Price</TableHead>
-                    <TableHead className="text-right w-32">Total</TableHead>
-                    <TableHead className="w-12"></TableHead>
+                <TableHeader className="bg-white/5">
+                  <TableRow className="border-none hover:bg-transparent">
+                    <TableHead className="py-4 pl-6 text-xs uppercase tracking-wider font-bold">Product</TableHead>
+                    <TableHead className="py-4 w-28 text-xs uppercase tracking-wider font-bold">Qty</TableHead>
+                    <TableHead className="py-4 w-32 text-xs uppercase tracking-wider font-bold">Unit</TableHead>
+                    <TableHead className="py-4 w-36 text-xs uppercase tracking-wider font-bold">Price</TableHead>
+                    <TableHead className="py-4 text-right w-36 text-xs uppercase tracking-wider font-bold">Total</TableHead>
+                    <TableHead className="py-4 w-12 pr-6"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
+                  {items.map((item, index) => (
+                    <TableRow key={item.id} className="group border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                      <TableCell className="pl-6 py-4">
                         <Input 
-                          placeholder="Product Name" 
+                          placeholder="What are you buying?" 
                           value={item.product} 
                           onChange={(e) => updateItem(item.id, "product", e.target.value)} 
+                          className="border-none bg-transparent focus-visible:ring-1 focus-visible:ring-primary/50 px-0 h-8 text-white placeholder:text-muted-foreground/30"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-4">
                         <Input 
                           type="number" min="1" 
                           value={item.quantity} 
                           onChange={(e) => updateItem(item.id, "quantity", Number(e.target.value))} 
+                          className="border-none bg-transparent focus-visible:ring-1 focus-visible:ring-primary/50 h-8 px-2"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-4">
                         <Select value={item.unit} onValueChange={(val) => updateItem(item.id, "unit", val)}>
-                          <SelectTrigger>
+                          <SelectTrigger className="border-none bg-transparent hover:bg-white/5 h-8 focus:ring-1 focus:ring-primary/50 transition-colors">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="bg-card border-white/10">
                             <SelectItem value="kg">kg</SelectItem>
                             <SelectItem value="ton">ton</SelectItem>
                             <SelectItem value="piece">piece</SelectItem>
@@ -169,19 +194,31 @@ export default function CreatePOLive() {
                           </SelectContent>
                         </Select>
                       </TableCell>
-                      <TableCell>
-                        <Input 
-                          type="number" min="0" step="0.01" 
-                          value={item.unit_price} 
-                          onChange={(e) => updateItem(item.id, "unit_price", Number(e.target.value))} 
-                        />
+                      <TableCell className="py-4">
+                        <div className="relative">
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 text-muted-foreground/50 text-xs pl-2">
+                            {currency === 'INR' ? '₹' : currency === 'USD' ? '$' : '€'}
+                          </span>
+                          <Input 
+                            type="number" min="0" step="0.01" 
+                            value={item.unit_price} 
+                            onChange={(e) => updateItem(item.id, "unit_price", Number(e.target.value))} 
+                            className="border-none bg-transparent focus-visible:ring-1 focus-visible:ring-primary/50 h-8 pl-6 pr-2 text-right font-mono"
+                          />
+                        </div>
                       </TableCell>
-                      <TableCell className="text-right font-medium pt-5">
+                      <TableCell className="text-right py-4 font-mono font-medium text-white pr-4">
                         {(item.quantity * item.unit_price).toLocaleString()}
                       </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => removeItem(item.id)} disabled={items.length === 1}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                      <TableCell className="pr-6 py-4">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => removeItem(item.id)} 
+                          disabled={items.length === 1}
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -189,83 +226,112 @@ export default function CreatePOLive() {
                 </TableBody>
               </Table>
             </div>
-            <Button variant="outline" size="sm" onClick={addItem}><Plus className="mr-2 h-4 w-4" /> Add Item</Button>
+            <div className="p-4 bg-white/[0.02] border-t border-white/5">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={addItem} 
+                className="w-full h-12 border-2 border-dashed border-white/5 hover:border-primary/30 hover:bg-primary/5 text-muted-foreground hover:text-primary transition-all gap-2"
+              >
+                <Plus className="h-4 w-4" /> Add Item Line
+              </Button>
+            </div>
           </CardContent>
-          <CardFooter className="justify-end border-t p-4 bg-muted/20">
-            <div className="text-lg font-bold">
-              Total: {currency} {totalAmount.toLocaleString()}
+          <CardFooter className="justify-end p-8 bg-black/20 backdrop-blur-sm border-t border-white/5">
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-xs text-muted-foreground uppercase tracking-widest">Order Total</span>
+              <div className="text-3xl font-bold text-gradient-gold font-mono">
+                {currency} {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </div>
             </div>
           </CardFooter>
         </Card>
 
-        <Card className="md:col-span-1 h-fit">
-          <CardHeader>
-            <CardTitle className="text-lg">Order Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Supplier *</Label>
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Supplier" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map(s => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Currency</Label>
-              <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="INR">INR (₹)</SelectItem>
-                  <SelectItem value="USD">USD ($)</SelectItem>
-                  <SelectItem value="EUR">EUR (€)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        <div className="space-y-6">
+          <Card className="erp-card h-fit">
+            <CardHeader className="border-b border-white/5">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <span className="w-1 h-5 bg-primary rounded-full" />
+                Order Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 p-6">
+              <div className="space-y-2">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Supplier *</Label>
+                <Select value={supplierId} onValueChange={setSupplierId}>
+                  <SelectTrigger className="bg-white/5 border-white/10 hover:border-primary/50 transition-colors">
+                    <SelectValue placeholder="Select Supplier" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-white/10">
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Currency</Label>
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-white/10">
+                      <SelectItem value="INR">INR (₹)</SelectItem>
+                      <SelectItem value="USD">USD ($)</SelectItem>
+                      <SelectItem value="EUR">EUR (€)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Expected Delivery</Label>
+                  <Input 
+                    type="date" 
+                    value={expectedDate} 
+                    onChange={(e) => setExpectedDate(e.target.value)} 
+                    className="bg-white/5 border-white/10"
+                  />
+                </div>
+              </div>
 
-            <div className="space-y-2">
-              <Label>Expected Delivery</Label>
-              <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea 
-                placeholder="Special instructions..." 
-                value={notes} 
-                onChange={(e) => setNotes(e.target.value)}
-                className="h-24"
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-2 border-t p-4">
-            <Button 
-              className="w-full bg-blue-600 hover:bg-blue-700" 
-              onClick={() => handleSave('sent')}
-              disabled={saving}
-            >
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              Save & Send
-            </Button>
-            <Button 
-              variant="outline" 
-              className="w-full" 
-              onClick={() => handleSave('draft')}
-              disabled={saving}
-            >
-              <Save className="mr-2 h-4 w-4" /> Save as Draft
-            </Button>
-          </CardFooter>
-        </Card>
+              <div className="space-y-2">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Notes / Instructions</Label>
+                <Textarea 
+                  placeholder="Enter any special instructions or terms..." 
+                  value={notes} 
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="h-28 bg-white/5 border-white/10 focus:border-primary/50 transition-colors resize-none"
+                />
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-3 p-6 pt-0">
+              <Button 
+                className="w-full btn-gold h-12 text-base shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] active:scale-[0.98]" 
+                onClick={() => handleSave('sent')}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Send className="mr-2 h-5 w-5" />}
+                Issue Purchase Order
+              </Button>
+              <Button 
+                variant="outline" 
+                className="w-full h-12 border-white/10 hover:bg-white/5 hover:text-white transition-all" 
+                onClick={() => handleSave('draft')}
+                disabled={saving}
+              >
+                <Save className="mr-2 h-5 w-5" /> Save as Draft
+              </Button>
+            </CardFooter>
+          </Card>
+          
+          {/* Quick Stats or Info Panel */}
+          <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02] text-xs text-muted-foreground leading-relaxed">
+            <p><strong>Note:</strong> Issuing this purchase order will notify the supplier and create a pending record in your procurement ledger.</p>
+          </div>
+        </div>
       </div>
     </div>
+
   );
 }

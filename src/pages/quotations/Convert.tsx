@@ -1,38 +1,134 @@
 import { useNavigate } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2, FileCheck } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Section } from "@/components/shared/FormShell";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { quotations } from "@/data/mock";
 import { toast } from "sonner";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ConvertQuotation() {
   const nav = useNavigate();
-  const ready = quotations.filter((q) => q.status === "Approved");
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data: ready = [], isLoading } = useQuery({
+    queryKey: ['quotations_to_convert', profile?.company_id],
+    queryFn: async () => {
+      if (!profile?.company_id) return [];
+      const { data, error } = await supabase
+        .from('quotations')
+        .select(`
+          *,
+          customer:customers(name)
+        `)
+        .eq('company_id', profile.company_id)
+        .eq('status', 'Approved')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.company_id
+  });
+
+  const convertMutation = useMutation({
+    mutationFn: async (quote: any) => {
+      // 1. Create Order
+      const { data: order, error: orderErr } = await supabase
+        .from('export_orders')
+        .insert({
+          company_id: profile!.company_id,
+          customer_id: quote.customer_id,
+          order_number: `ORD-${quote.quotation_number.split('-').slice(1).join('-')}`,
+          total_amount: quote.amount,
+          currency: quote.currency,
+          status: 'Pending',
+          payment_terms: quote.payment_terms
+        })
+        .select('id')
+        .single();
+      
+      if (orderErr) throw orderErr;
+
+      // 2. Update Quotation Status
+      const { error: updateErr } = await supabase
+        .from('quotations')
+        .update({ status: 'Approved' }) // Keep as approved or move to a 'Converted' status if exists
+        .eq('id', quote.id);
+      
+      if (updateErr) throw updateErr;
+
+      return order;
+    },
+    onSuccess: () => {
+      toast.success("Quotation converted to Sales Order successfully!");
+      queryClient.invalidateQueries({ queryKey: ['quotations_to_convert'] });
+      nav("/orders");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Conversion failed");
+    }
+  });
+
   return (
     <div>
-      <PageHeader title="Convert to Sales Order" description="Approved quotations ready to convert" breadcrumbs={[{ label: "Quotations", to: "/quotations" }, { label: "Convert" }]} />
+      <PageHeader 
+        title="Convert to Sales Order" 
+        description="Approved quotations ready to convert into official orders" 
+        breadcrumbs={[{ label: "Quotations", to: "/quotations" }, { label: "Convert" }]} 
+      />
       <Section>
-        <div className="space-y-2">
-          {ready.map((q) => (
-            <div key={q.id} className="flex items-center justify-between p-3 border border-border rounded-md">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-md bg-success-muted text-success flex items-center justify-center text-xs font-semibold">✓</div>
-                <div>
-                  <div className="text-sm font-medium">{q.customer}</div>
-                  <div className="text-xs text-muted-foreground">{q.id} · {q.currency} {q.amount.toLocaleString()}</div>
+        {isLoading ? (
+          <div className="py-24 flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary opacity-20" />
+          </div>
+        ) : ready.length === 0 ? (
+          <div className="py-24 text-center">
+            <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileCheck className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-bold">No Quotations Ready</h3>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto mt-2">
+              Only quotations with "Approved" status can be converted into official sales orders.
+            </p>
+            <Button variant="outline" className="mt-6" onClick={() => nav("/quotations")}>
+              View All Quotations
+            </Button>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {ready.map((q) => (
+              <div key={q.id} className="flex items-center justify-between p-6 bg-card border border-border rounded-xl shadow-sm hover:border-primary/30 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-xl bg-success-muted text-success flex items-center justify-center text-lg font-bold">
+                    <FileCheck className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="text-base font-bold">{q.customer?.name || 'Unknown Customer'}</div>
+                    <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider mt-1">
+                      {q.quotation_number} · {q.currency} {Number(q.amount).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <StatusBadge status={q.status} />
+                  <Button 
+                    className="btn-gold"
+                    size="sm" 
+                    onClick={() => convertMutation.mutate(q)}
+                    disabled={convertMutation.isPending}
+                  >
+                    {convertMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ArrowRight className="h-4 w-4 mr-2" />}
+                    Convert to Order
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge status={q.status} />
-                <Button size="sm" onClick={() => { toast.success(`${q.id} converted to sales order`); nav("/orders"); }}>
-                  Convert <ArrowRight className="h-3.5 w-3.5 ml-1" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Section>
     </div>
   );

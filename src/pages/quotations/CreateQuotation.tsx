@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Save, Trash2, Eye, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Section, FormGrid, FormRow } from "@/components/shared/FormShell";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,35 +15,77 @@ type Item = { id: string; product_id: string; product_name: string; qty: number;
 
 export default function CreateQuotation() {
   const nav = useNavigate();
+  const location = useLocation();
   const { profile } = useAuth();
+  const leadFromState = location.state?.lead;
   const [saving, setSaving] = useState(false);
   const [leadsList, setLeadsList] = useState<any[]>([]);
   const [productsList, setProductsList] = useState<any[]>([]);
+  const [containerTypesList, setContainerTypesList] = useState<any[]>([]);
+  const [packagingTypesList, setPackagingTypesList] = useState<any[]>([]);
 
   // Form State
-  const [selectedLeadId, setSelectedLeadId] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [selectedLeadId, setSelectedLeadId] = useState(leadFromState?.id || "");
+  const [customerName, setCustomerName] = useState(leadFromState?.company_name || "");
   const [currency, setCurrency] = useState("USD");
   const [validUntil, setValidUntil] = useState("");
   const [incoterm, setIncoterm] = useState("CIF");
+  const [containerType, setContainerType] = useState("");
+  const [packagingType, setPackagingType] = useState("");
+  const [taxRate, setTaxRate] = useState(0);
   const [paymentTerms, setPaymentTerms] = useState("90 % of the invoice value to be paid in advance, and the remaining 10 % of the invoice value to be paid after the loading of goods.\n\nNote : Including packing, loading and Transport.");
   
-  const [items, setItems] = useState<Item[]>([
-    { id: Date.now().toString(), product_id: "", product_name: "", qty: 1, price: 0 },
-  ]);
+  const [items, setItems] = useState<Item[]>(
+    leadFromState?.interested_product 
+      ? [{ id: Date.now().toString(), product_id: "", product_name: leadFromState.interested_product, qty: 1, price: 0 }]
+      : [{ id: Date.now().toString(), product_id: "", product_name: "", qty: 1, price: 0 }]
+  );
+
+  // New Packaging Type State
+  const [isPkgModalOpen, setIsPkgModalOpen] = useState(false);
+  const [newPkgName, setNewPkgName] = useState("");
+  const [savingPkg, setSavingPkg] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
       if (!profile?.company_id) return;
-      const [leadsRes, productsRes] = await Promise.all([
+      const [leadsRes, productsRes, containersRes, pkgsRes] = await Promise.all([
         supabase.from('leads').select('*').eq('company_id', profile.company_id),
-        supabase.from('products').select('*').eq('company_id', profile.company_id)
+        supabase.from('products').select('*').eq('company_id', profile.company_id),
+        supabase.from('container_types').select('name').order('name'),
+        supabase.from('packaging_types').select('name').order('name')
       ]);
       if (leadsRes.data) setLeadsList(leadsRes.data);
       if (productsRes.data) setProductsList(productsRes.data);
+      if (containersRes.data) setContainerTypesList(containersRes.data);
+      if (pkgsRes.data) setPackagingTypesList(pkgsRes.data);
     };
     loadData();
   }, [profile?.company_id]);
+
+  const loadPackagingTypes = async () => {
+    const { data } = await supabase.from('packaging_types').select('name').order('name');
+    if (data) setPackagingTypesList(data);
+  };
+
+  const handleAddPackaging = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPkgName) return toast.error("Packaging type name is required");
+    
+    setSavingPkg(true);
+    try {
+      const { error } = await supabase.from("packaging_types").insert({ name: newPkgName });
+      if (error) throw error;
+      toast.success("New packaging type added successfully");
+      setIsPkgModalOpen(false);
+      setNewPkgName("");
+      loadPackagingTypes();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add packaging type");
+    } finally {
+      setSavingPkg(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedLeadId) return;
@@ -57,6 +100,8 @@ export default function CreateQuotation() {
   const updateItem = (id: string, patch: Partial<Item>) => setItems((s) => s.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   
   const subtotal = items.reduce((s, i) => s + (Number(i.qty) * Number(i.price)), 0);
+  const taxAmount = (subtotal * taxRate) / 100;
+  const totalAmount = subtotal + taxAmount;
 
   const handleSave = async () => {
     if (!customerName || items.length === 0 || !items[0].product_name) {
@@ -85,7 +130,12 @@ export default function CreateQuotation() {
           company_id: profile!.company_id,
           customer_id: customerId,
           quotation_number: quoteNumber,
-          amount: subtotal,
+          amount: totalAmount,
+          subtotal: subtotal,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
+          container_type: containerType || null,
+          packaging_type: packagingType || null,
           currency,
           status: 'Draft',
           items_count: items.length,
@@ -132,6 +182,21 @@ export default function CreateQuotation() {
           </Button>
         </>}
       />
+
+      <Dialog open={isPkgModalOpen} onOpenChange={setIsPkgModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add New Packaging Type</DialogTitle></DialogHeader>
+          <form onSubmit={handleAddPackaging} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Packaging Name *</label>
+              <Input value={newPkgName} onChange={e => setNewPkgName(e.target.value)} placeholder="e.g., Plastic Bag, Box, etc." required />
+            </div>
+            <Button type="submit" disabled={savingPkg} className="w-full">
+              {savingPkg && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Packaging Type
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
       <div className="space-y-4">
         <Section title="Customer & Terms">
           <FormGrid cols={3}>
@@ -170,6 +235,27 @@ export default function CreateQuotation() {
                   <SelectItem value="EXW">EXW</SelectItem>
                 </SelectContent>
               </Select>
+            </FormRow>
+            <FormRow label="Container Type">
+              <Select value={containerType} onValueChange={setContainerType}>
+                <SelectTrigger><SelectValue placeholder="Select container type" /></SelectTrigger>
+                <SelectContent>
+                  {containerTypesList.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow label="Packaging Type">
+              <div className="flex gap-2">
+                <Select value={packagingType} onValueChange={setPackagingType}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select packaging type" /></SelectTrigger>
+                  <SelectContent>
+                    {packagingTypesList.map(p => <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => setIsPkgModalOpen(true)} title="Add new packaging type">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </FormRow>
           </FormGrid>
           <div className="mt-4">
@@ -218,8 +304,29 @@ export default function CreateQuotation() {
             </table>
           </div>
           <div className="mt-4 flex justify-end">
-            <div className="w-64 space-y-1.5 text-sm">
-              <div className="flex justify-between pt-2 border-t border-border font-semibold"><span>Total Amount</span><span className="tabular-nums">{currency === 'USD' ? '$' : currency} {subtotal.toLocaleString()}</span></div>
+            <div className="w-64 space-y-2 text-sm">
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>Subtotal</span>
+                <span>{currency === 'USD' ? '$' : currency} {subtotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  Tax (%)
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    className="h-7 w-16 text-right px-2 py-0" 
+                    value={taxRate || ""} 
+                    onChange={e => setTaxRate(Number(e.target.value) || 0)} 
+                    placeholder="0"
+                  />
+                </span>
+                <span>{currency === 'USD' ? '$' : currency} {taxAmount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-border font-bold text-base">
+                <span>Total Amount</span>
+                <span className="tabular-nums text-primary">{currency === 'USD' ? '$' : currency} {totalAmount.toLocaleString()}</span>
+              </div>
             </div>
           </div>
         </Section>

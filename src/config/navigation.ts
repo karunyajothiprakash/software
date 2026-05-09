@@ -139,7 +139,6 @@ export const navGroups: NavGroup[] = [
       { title: "Invoices", url: "/documents/invoices", icon: FileSpreadsheet, permission: "orders.view" },
       { title: "Packing Lists", url: "/documents/packing-lists", icon: FileBox, permission: "shipments.view" },
       { title: "Certificate of Origin", url: "/documents/certificates", icon: Award, permission: "orders.view" },
-      { title: "Bill of Lading", url: "/documents/bills-of-lading", icon: BookOpen, permission: "shipments.view" },
       { title: "Document Viewer", url: "/documents/viewer", icon: Eye, permission: "orders.view" },
     ],
   },

@@ -8,12 +8,12 @@ export type Column<T> = {
   key: string;
   header: string;
   className?: string;
-  render: (row: T) => ReactNode;
+  render?: (row: T) => ReactNode;
   sortable?: boolean;
   sortValue?: (row: T) => string | number;
 };
 
-export function DataTable<T extends { id: string | number }>({
+export function DataTable<T extends Record<string, any>>({
   data,
   columns,
   searchKeys,
@@ -77,9 +77,9 @@ export function DataTable<T extends { id: string | number }>({
           <tbody>
             {paged.length === 0 ? (
               <tr><td colSpan={columns.length} className="px-4 py-12 text-center text-sm text-muted-foreground">{emptyMessage}</td></tr>
-            ) : paged.map((row) => (
+            ) : paged.map((row, idx) => (
               <tr
-                key={row.id}
+                key={row.id ?? idx}
                 onClick={() => onRowClick?.(row)}
                 className={cn(
                   "border-b border-border last:border-0 hover:bg-muted/40 transition-colors",
@@ -88,7 +88,7 @@ export function DataTable<T extends { id: string | number }>({
               >
                 {columns.map((c) => (
                   <td key={c.key} className={cn("px-4 py-3 align-middle", c.className)}>
-                    {c.render(row)}
+                    {c.render ? c.render(row) : String(row[c.key] ?? "")}
                   </td>
                 ))}
               </tr>

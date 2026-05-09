@@ -151,7 +151,7 @@ export function ProformaInvoice({ shipment, onClose }: ProformaInvoiceProps) {
                     </tr>
                     {/* Empty Rows */}
                     {[...Array(4)].map((_, i) => (
-                      <tr key={i} className="h-10 border-b-[1px] border-black last:border-b-0">
+                      <tr key={i} className="h-10 border-b-[1px] border-black">
                         <td className="border-r-[1px] border-black"></td>
                         <td className="border-r-[1px] border-black"></td>
                         <td className="border-r-[1px] border-black"></td>
@@ -222,8 +222,9 @@ export function ProformaInvoice({ shipment, onClose }: ProformaInvoiceProps) {
 
         <style dangerouslySetInnerHTML={{ __html: `
           @media print {
-            body { background: white !important; }
-            .fixed { position: static !important; }
+            @page { margin: 0; size: auto; }
+            body { background: white !important; -webkit-print-color-adjust: exact; }
+            .fixed { position: absolute !important; inset: 0 !important; padding: 0 !important; background: white !important; backdrop-filter: none !important; }
             .print\\:hidden { display: none !important; }
             .shadow-2xl { box-shadow: none !important; }
           }

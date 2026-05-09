@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export default function LeadsList() {
+  const nav = useNavigate();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -48,6 +50,10 @@ export default function LeadsList() {
   // Delete Confirm state
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Assignment state
+  const [team, setTeam] = useState<any[]>([]);
+  const [assignedTo, setAssignedTo] = useState("");
 
   const fetchLeads = async () => {
     try {
@@ -68,8 +74,23 @@ export default function LeadsList() {
     }
   };
 
+  const fetchTeam = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return;
+    
+    const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session.user.id).single();
+    if (!profile?.company_id) return;
+
+    const { data: profiles } = await supabase.from('profiles').select('id, full_name').eq('company_id', profile.company_id);
+    if (profiles) {
+      setTeam(profiles);
+      setAssignedTo(session.user.id);
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
+    fetchTeam();
   }, []);
 
   const handleAddLead = async (e: React.FormEvent) => {
@@ -94,7 +115,7 @@ export default function LeadsList() {
         country: country,
         interested_product: product,
         stage: "new",
-        assigned_to: userId,
+        assigned_to: assignedTo || userId,
         created_by: userId,
       });
 
@@ -114,6 +135,36 @@ export default function LeadsList() {
     }
   };
 
+  const convertToCustomer = async (lead: Lead) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const companyId = (await supabase.from("profiles").select("company_id").eq("id", session?.user?.id).single()).data?.company_id;
+
+      if (!companyId) throw new Error("Could not identify your company");
+
+      // 1. Create Customer
+      const { data: customer, error: customerError } = await supabase
+        .from("customers")
+        .insert({
+          company_id: companyId,
+          name: lead.company_name,
+          country: lead.country,
+        })
+        .select()
+        .single();
+
+      if (customerError) throw customerError;
+
+      // 2. Update Lead Stage (optional, maybe 'converted')
+      await supabase.from("leads").update({ stage: "won" }).eq("id", lead.id);
+
+      toast.success(`${lead.company_name} is now a registered Customer!`);
+      fetchLeads();
+    } catch (error: any) {
+      toast.error(error.message || "Conversion failed");
+    }
+  };
+
   const confirmDelete = (id: string) => {
     setDeleteId(id);
     setConfirmOpen(true);
@@ -124,10 +175,10 @@ export default function LeadsList() {
     try {
       const { error } = await supabase.from("leads").delete().eq("id", deleteId);
       if (error) throw error;
-      toast.success("Lead deleted");
+      toast.success("Lead deleted successfully");
       fetchLeads();
     } catch (error: any) {
-      toast.error(error.message || "Failed to delete lead");
+      toast.error(error.message || "Delete failed");
     } finally {
       setConfirmOpen(false);
       setDeleteId(null);
@@ -137,31 +188,44 @@ export default function LeadsList() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Leads</h1>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button><Plus className="mr-2 h-4 w-4" /> Add Lead</Button>
+            <Button className="bg-primary hover:bg-primary/90"><Plus className="mr-2 h-4 w-4" /> Add Lead</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="bg-card border-border">
             <DialogHeader>
-              <DialogTitle>Create New Lead</DialogTitle>
+              <DialogTitle className="text-foreground">Create New Lead</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleAddLead} className="space-y-4 pt-4">
               <div className="space-y-2">
-                <Label>Company Name *</Label>
-                <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} required />
+                <Label className="text-foreground">Company Name *</Label>
+                <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} required className="bg-background border-input" />
               </div>
               <div className="space-y-2">
-                <Label>Contact Name</Label>
-                <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
+                <Label className="text-foreground">Contact Name</Label>
+                <Input value={contactName} onChange={(e) => setContactName(e.target.value)} className="bg-background border-input" />
               </div>
               <div className="space-y-2">
-                <Label>Country</Label>
-                <Input value={country} onChange={(e) => setCountry(e.target.value)} />
+                <Label className="text-foreground">Country</Label>
+                <Input value={country} onChange={(e) => setCountry(e.target.value)} className="bg-background border-input" />
               </div>
               <div className="space-y-2">
-                <Label>Interested Product</Label>
-                <Input value={product} onChange={(e) => setProduct(e.target.value)} />
+                <Label className="text-foreground">Interested Product</Label>
+                <Input value={product} onChange={(e) => setProduct(e.target.value)} className="bg-background border-input" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Assign To</Label>
+                <Select value={assignedTo} onValueChange={setAssignedTo}>
+                  <SelectTrigger className="bg-background border-input">
+                    <SelectValue placeholder="Select user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {team.map(member => (
+                      <SelectItem key={member.id} value={member.id}>{member.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Button type="submit" disabled={submitting} className="w-full">
                 {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -172,49 +236,86 @@ export default function LeadsList() {
         </Dialog>
       </div>
 
-      <div className="border rounded-md bg-card">
+      <div className="border border-border rounded-lg bg-card overflow-hidden shadow-sm">
         <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Company</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>Product</TableHead>
-              <TableHead>Stage</TableHead>
-              <TableHead>Assigned To</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+          <TableHeader className="bg-muted/50">
+            <TableRow className="hover:bg-transparent border-border">
+              <TableHead className="text-foreground font-bold">Company</TableHead>
+              <TableHead className="text-foreground font-bold">Contact</TableHead>
+              <TableHead className="text-foreground font-bold">Country</TableHead>
+              <TableHead className="text-foreground font-bold">Product</TableHead>
+              <TableHead className="text-foreground font-bold">Stage</TableHead>
+              <TableHead className="text-foreground font-bold">Assigned To</TableHead>
+              <TableHead className="text-right text-foreground font-bold">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto opacity-20" />
                 </TableCell>
               </TableRow>
             ) : leads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground italic">
                   No leads found.
                 </TableCell>
               </TableRow>
             ) : (
               leads.map((lead) => (
-                <TableRow key={lead.id}>
-                  <TableCell className="font-medium">{lead.company_name}</TableCell>
-                  <TableCell>{lead.contact_name || "-"}</TableCell>
-                  <TableCell>{lead.country || "-"}</TableCell>
-                  <TableCell>{lead.interested_product || "-"}</TableCell>
+                <TableRow key={lead.id} className="border-border hover:bg-muted/30 transition-colors">
+                  <TableCell className="font-bold text-foreground">{lead.company_name}</TableCell>
+                  <TableCell className="text-sm">{lead.contact_name || "-"}</TableCell>
+                  <TableCell className="text-sm">{lead.country || "-"}</TableCell>
+                  <TableCell className="text-sm">{lead.interested_product || "-"}</TableCell>
                   <TableCell>
-                    <Badge className={`${STAGE_COLORS[lead.stage]} hover:${STAGE_COLORS[lead.stage]} capitalize text-white`}>
-                      {lead.stage}
-                    </Badge>
+                    <Select 
+                      defaultValue={lead.stage} 
+                      onValueChange={async (newStage) => {
+                        try {
+                          const { error } = await supabase.from("leads").update({ stage: newStage }).eq("id", lead.id);
+                          if (error) throw error;
+                          toast.success(`Lead moved to ${newStage}`);
+                          fetchLeads();
+                        } catch (err: any) {
+                          toast.error(err.message || "Failed to update stage");
+                        }
+                      }}
+                    >
+                      <SelectTrigger className={`h-8 w-32 ${STAGE_COLORS[lead.stage]} text-white border-none font-bold capitalize`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STAGES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
-                  <TableCell>{lead.profiles?.full_name || "Unassigned"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground font-medium">{lead.profiles?.full_name || "Unassigned"}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => confirmDelete(lead.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-wider"
+                          onClick={() => nav("/quotations/create", { state: { lead: lead } })}
+                        >
+                          Quote
+                        </Button>
+                        {lead.stage === "won" && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-8 text-[10px] font-bold uppercase tracking-wider border-emerald-500/50 text-emerald-500 hover:bg-emerald-500 hover:text-white"
+                          onClick={() => convertToCustomer(lead)}
+                        >
+                          Convert
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10" onClick={() => confirmDelete(lead.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive opacity-50 hover:opacity-100" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

@@ -18,17 +18,43 @@ export default function InvoicePreview() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const { data, error: fetchErr } = await supabase
+        // Try fetching as a Shipment first
+        let { data, error: fetchErr } = await supabase
           .from("export_shipments")
           .select("*, export_orders(*)")
           .eq("id", id)
           .single();
 
-        if (fetchErr) throw fetchErr;
-        setShipment(data);
+        if (fetchErr) {
+          // If not found, try fetching as an Order directly
+          const { data: orderOnly, error: orderErr } = await supabase
+            .from("export_orders")
+            .select("*, export_shipments(*)")
+            .eq("id", id)
+            .single();
 
-        // Fetch company and creator details
+          if (orderErr) throw orderErr;
+          
+          // Construct a mock shipment object for the UI
+          const shipmentData = orderOnly.export_shipments?.[0] || {
+            origin_port: 'TBD',
+            destination_port: 'TBD',
+            departure_date: null
+          };
+          
+          setShipment({
+            ...shipmentData,
+            customer_name: orderOnly.customer_name,
+            export_orders: orderOnly
+          });
+          data = { export_orders: orderOnly };
+        } else {
+          setShipment(data);
+        }
+
         const orderData = Array.isArray(data.export_orders) ? data.export_orders[0] : data.export_orders;
+        
+        // Fetch company and creator details
         if (orderData?.company_id) {
           const { data: compData } = await supabase
             .from("companies")
@@ -194,7 +220,7 @@ export default function InvoicePreview() {
                 </div>
               </div>
               <div className="p-4">
-                <div className="grid grid-cols-[90px_1fr]"><span>Packing Type:</span> <span className="font-bold">{order.packing_details || '13 Kg Box'}</span></div>
+                <div className="grid grid-cols-[90px_1fr]"><span>Packing Type:</span> <span className="font-bold">{order.packing_details || 'As per Export Standard Packing'}</span></div>
               </div>
             </div>
 

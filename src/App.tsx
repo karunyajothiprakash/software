@@ -18,6 +18,8 @@ import WaitingApproval from "./pages/WaitingApproval";
 import Pending from "./pages/Pending";
 import Approvals from "./pages/Approvals";
 import InvoicePreview from "./pages/documents/InvoicePreview";
+import PackingListPreview from "./pages/documents/PackingListPreview";
+import CertificatePreview from "./pages/documents/CertificatePreview";
 // (Quotations Approvals is imported below as QuotationApprovals to avoid name clash)
 
 // Dashboards
@@ -62,6 +64,7 @@ import LowStockAlerts from "./pages/inventory/LowStockAlerts";
 import QuotationsList from "./pages/quotations/QuotationsList";
 import CreateQuotation from "./pages/quotations/CreateQuotation";
 import QuotationPreview from "./pages/quotations/QuotationPreview";
+import PublicQuotationView from "./pages/quotations/PublicQuotationView";
 import QuotationApprovals from "./pages/quotations/Approvals";
 import ConvertQuotation from "./pages/quotations/Convert";
 
@@ -83,7 +86,6 @@ import DeliveryStatus from "./pages/shipments/DeliveryStatus";
 import Invoices from "./pages/documents/Invoices";
 import PackingLists from "./pages/documents/PackingLists";
 import Certificates from "./pages/documents/Certificates";
-import BillsOfLading from "./pages/documents/BillsOfLading";
 import DocumentViewer from "./pages/documents/DocumentViewer";
 import InvoiceReport from "./pages/documents/InvoiceReport";
 
@@ -121,6 +123,10 @@ const App = () => (
             <Route path="/complete-profile" element={<CompleteProfile />} />
             <Route path="/waiting-approval" element={<WaitingApproval />} />
             <Route path="/invoices/:id/preview" element={<InvoicePreview />} />
+            <Route path="/packing-lists/:id/preview" element={<PackingListPreview />} />
+            <Route path="/certificates/:id/preview" element={<CertificatePreview />} />
+            <Route path="/share/quote/:id" element={<PublicQuotationView />} />
+            
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Navigate to="/dashboards/executive" replace />} />
               <Route path="/approvals" element={<Approvals />} />
@@ -195,7 +201,6 @@ const App = () => (
               <Route path="/documents/invoices" element={<Invoices />} />
               <Route path="/documents/packing-lists" element={<PackingLists />} />
               <Route path="/documents/certificates" element={<Certificates />} />
-              <Route path="/documents/bills-of-lading" element={<BillsOfLading />} />
               <Route path="/documents/viewer" element={<DocumentViewer />} />
               <Route path="/documents/invoices/:id" element={<InvoiceReport />} />
 

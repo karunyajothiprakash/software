@@ -2,22 +2,48 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { Section } from "@/components/shared/FormShell";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { salesByMonth } from "@/data/mock";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 
 export default function FinancialOverview() {
+  const { data: realSales } = useQuery({
+    queryKey: ['dashboard_sales'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('view_sales_by_month' as any).select('*');
+      if (error) throw error;
+      return data;
+    },
+    retry: false
+  });
+
+  const { data: receivablesData } = useQuery({
+    queryKey: ['financial_receivables'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('export_orders')
+        .select('total_amount')
+        .neq('status', 'paid');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const chartSales = realSales || [];
+  const receivables = (receivablesData || []).reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+
   return (
     <div>
       <PageHeader title="Financial Overview" description="Cash position, receivables and currency exposure" breadcrumbs={[{ label: "Dashboards" }, { label: "Financial" }]} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Receivables" value="$413K" delta={{ value: "+$28K", positive: false }} />
-        <StatCard label="Payables" value="$184K" delta={{ value: "-$12K", positive: true }} />
-        <StatCard label="Cash on Hand" value="$1.24M" delta={{ value: "+$92K", positive: true }} />
-        <StatCard label="Overdue" value="$124K" delta={{ value: "+$24K", positive: false }} />
+        <StatCard label="Receivables" value={`$${(receivables/1000).toFixed(0)}K`} delta={{ value: "Live", positive: false }} />
+        <StatCard label="Payables" value="$0K" delta={{ value: "Live", positive: true }} />
+        <StatCard label="Cash on Hand" value="$0K" delta={{ value: "Live", positive: true }} />
+        <StatCard label="Overdue" value="$0K" delta={{ value: "Live", positive: false }} />
       </div>
       <Section title="Cash Flow">
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={salesByMonth}>
+            <AreaChart data={chartSales}>
               <defs>
                 <linearGradient id="cf" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />

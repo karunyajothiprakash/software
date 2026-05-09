@@ -14,6 +14,7 @@ import { toast } from "sonner";
 export default function CreateShipment() {
   const nav = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // State
   const [orders, setOrders] = useState<any[]>([]);
@@ -37,28 +38,51 @@ export default function CreateShipment() {
   const [newPortCode, setNewPortCode] = useState("");
   const [savingPort, setSavingPort] = useState(false);
 
-  const fetchData = async () => {
-    const [ordersRes, carriersRes, portsRes, containersRes, moreOrdersRes] = await Promise.all([
-      supabase.from("export_orders").select("id, order_number, customer_name, quantity, unit").eq("status", "shipped").order("created_at", { ascending: false }),
-      supabase.from("shipping_carriers").select("name, code").order("name"),
-      supabase.from("shipping_ports").select("name, country, code").order("name"),
-      supabase.from("container_types").select("name").order("name"),
-      supabase.from("export_orders").select("id, order_number, customer_name, quantity, unit").in("status", ["confirmed", "processing"]).order("created_at", { ascending: false })
-    ]);
+  // New Container Type State
+  const [isContainerModalOpen, setIsContainerModalOpen] = useState(false);
+  const [newContainerName, setNewContainerName] = useState("");
+  const [newContainerDesc, setNewContainerDesc] = useState("");
+  const [savingContainer, setSavingContainer] = useState(false);
 
-    let allOrders = [];
-    if (ordersRes.data) allOrders = [...allOrders, ...ordersRes.data];
-    if (moreOrdersRes.data) allOrders = [...allOrders, ...moreOrdersRes.data];
-    
-    setOrders(allOrders);
-    if (carriersRes.data) setCarriersList(carriersRes.data);
-    if (portsRes.data) setPortsList(portsRes.data);
-    if (containersRes.data) setContainerTypesList(containersRes.data);
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      console.log("Fetching orders for shipment...");
+      const { data, error } = await supabase
+        .from("export_orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Supabase error:", error);
+        throw error;
+      }
+      
+      console.log("Orders found:", data?.length || 0);
+      setOrders(data || []);
+      
+      const [carriersRes, portsRes, containersRes] = await Promise.all([
+        supabase.from("shipping_carriers").select("name, code").order("name"),
+        supabase.from("shipping_ports").select("name, country, code").order("name"),
+        supabase.from("container_types").select("name").order("name"),
+      ]);
+
+      if (carriersRes.data) setCarriersList(carriersRes.data);
+      if (portsRes.data) setPortsList(portsRes.data);
+      if (containersRes.data) setContainerTypesList(containersRes.data);
+    } catch (err: any) {
+      console.error("Fetch error:", err);
+      toast.error("Failed to load data: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const selectedOrder = orders.find(o => o.id === orderId);
 
   const handleAddPort = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +109,29 @@ export default function CreateShipment() {
     }
   };
 
+  const handleAddContainerType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContainerName) return toast.error("Container type name is required");
+    
+    setSavingContainer(true);
+    try {
+      const { error } = await supabase.from("container_types").insert({
+        name: newContainerName,
+        description: newContainerDesc
+      });
+      if (error) throw error;
+      toast.success("New container type added successfully");
+      setIsContainerModalOpen(false);
+      setNewContainerName("");
+      setNewContainerDesc("");
+      fetchData(); // Refresh the dropdowns
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add container type");
+    } finally {
+      setSavingContainer(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!orderId || !carrier || !originPort || !destinationPort || !containerType) {
       return toast.error("Please fill in all required fields");
@@ -92,7 +139,6 @@ export default function CreateShipment() {
 
     setSaving(true);
     try {
-      const selectedOrder = orders.find(o => o.id === orderId);
       const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
       const shipmentNumber = `SHP-${new Date().getFullYear()}-${rand}`;
 
@@ -164,18 +210,81 @@ export default function CreateShipment() {
         </DialogContent>
       </Dialog>
 
+      {/* Container Type Creation Modal */}
+      <Dialog open={isContainerModalOpen} onOpenChange={setIsContainerModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add New Container Type</DialogTitle></DialogHeader>
+          <form onSubmit={handleAddContainerType} className="space-y-4 pt-4">
+            <div className="space-y-2"><Label>Container Name/Type *</Label><Input value={newContainerName} onChange={e => setNewContainerName(e.target.value)} placeholder="e.g., 40ft Flat Rack, Box, Carton" required /></div>
+            <div className="space-y-2"><Label>Description</Label><Input value={newContainerDesc} onChange={e => setNewContainerDesc(e.target.value)} placeholder="Optional description" /></div>
+            <Button type="submit" disabled={savingContainer} className="w-full">
+              {savingContainer && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Container Type
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-4 max-w-4xl">
-        <Section title="Order Reference">
+        <Section title="Order Selection">
           <FormGrid>
-            <FormRow label="Sales Order" required>
-              <Select value={orderId} onValueChange={setOrderId}>
-                <SelectTrigger><SelectValue placeholder="Select an order" /></SelectTrigger>
-                <SelectContent>
-                  {orders.map(o => <SelectItem key={o.id} value={o.id}>{o.order_number} ({o.customer_name})</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <FormRow label="Select Export Order" required>
+              <div className="flex gap-2">
+                <Select value={orderId} onValueChange={setOrderId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder={loading ? "Loading orders..." : "Select an order"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {orders.length === 0 ? (
+                      <div className="p-2 text-xs text-muted-foreground text-center">No orders found</div>
+                    ) : (
+                      orders.map(o => (
+                        <SelectItem key={o.id} value={o.id}>
+                          <div className="flex flex-col py-0.5">
+                            <span className="font-bold">{o.order_number} — {o.product}</span>
+                            <span className="text-[10px] text-muted-foreground">{o.customer_name} · {o.quantity} {o.unit}</span>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    fetchData();
+                  }}
+                  disabled={loading}
+                  title="Refresh Orders"
+                >
+                  <Loader2 className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
             </FormRow>
-            <FormRow label="Carrier" required>
+          </FormGrid>
+
+          {selectedOrder && (
+            <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Product to Ship</p>
+                <p className="text-sm font-bold text-primary">{selectedOrder.product}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Order Quantity</p>
+                <p className="text-sm font-bold">{selectedOrder.quantity} {selectedOrder.unit}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Customer</p>
+                <p className="text-sm font-bold">{selectedOrder.customer_name}</p>
+              </div>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Carrier & Logistics">
+          <FormGrid>
+            <FormRow label="Shipping Line / Carrier" required>
               <Select value={carrier} onValueChange={setCarrier}>
                 <SelectTrigger><SelectValue placeholder="Select carrier" /></SelectTrigger>
                 <SelectContent>
@@ -221,12 +330,17 @@ export default function CreateShipment() {
           <FormGrid>
             <FormRow label="Number of containers"><Input type="number" min="1" value={containerCount} onChange={e => setContainerCount(e.target.value)} /></FormRow>
             <FormRow label="Container type" required>
-              <Select value={containerType} onValueChange={setContainerType}>
-                <SelectTrigger><SelectValue placeholder="Select container type" /></SelectTrigger>
-                <SelectContent>
-                  {containerTypesList.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select value={containerType} onValueChange={setContainerType}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select container type" /></SelectTrigger>
+                  <SelectContent>
+                    {containerTypesList.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => setIsContainerModalOpen(true)} title="Add new container type">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </FormRow>
           </FormGrid>
         </Section>
