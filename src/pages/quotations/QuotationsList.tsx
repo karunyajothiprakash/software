@@ -100,26 +100,8 @@ export default function QuotationsList() {
 
   const handleRowDownload = async (e: React.MouseEvent, quotation: any) => {
     e.stopPropagation();
-    setDownloadingId(quotation.id);
-    
-    try {
-      // The data is already fetched by react-query, but we might want the full structure
-      // for the PDF export if it's not already in the mapped object.
-      // In this case, I added quotation_items to the main query above.
-      
-      const formatted = {
-        ...quotation,
-        customer_name: quotation.customer?.name || "Unknown"
-      };
-
-      exportQuotationsToPDF([formatted], false);
-      toast.success(`Quotation ${quotation.quotation_number} downloaded`);
-    } catch (err) {
-      console.error("Error downloading quotation:", err);
-      toast.error("Failed to download quotation");
-    } finally {
-      setDownloadingId(null);
-    }
+    // Navigate to report with download=true to trigger auto-save
+    nav(`/quotations/${quotation.id}/report?download=true`);
   };
 
   const handleExport = () => {
@@ -203,14 +185,9 @@ export default function QuotationsList() {
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-primary"
                   onClick={(e) => handleRowDownload(e, r)}
-                  disabled={downloadingId === r.id}
                   title="Download PDF"
                 >
-                  {downloadingId === r.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
+                  <Download className="h-4 w-4" />
                 </Button>
 
                 <AlertDialog>

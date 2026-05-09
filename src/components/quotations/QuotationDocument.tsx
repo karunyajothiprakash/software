@@ -8,12 +8,24 @@ import { Loader2 } from "lucide-react";
 interface QuotationDocumentProps {
   quotation: any;
   onClose: () => void;
+  autoDownload?: boolean;
 }
 
-export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps) {
+export function QuotationDocument({ quotation, onClose, autoDownload = false }: QuotationDocumentProps) {
   if (!quotation) return null;
   const docRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
+
+  React.useEffect(() => {
+    if (autoDownload && !hasAutoDownloaded && !downloading && docRef.current) {
+      setHasAutoDownloaded(true);
+      // Small delay to ensure styles are applied
+      setTimeout(() => {
+        handleDownloadPDF();
+      }, 1000);
+    }
+  }, [autoDownload, hasAutoDownloaded, downloading]);
 
   const handleDownloadPDF = async () => {
     if (!docRef.current) return;
