@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { QuotationDocument } from "@/components/quotations/QuotationDocument";
-import { Loader2, ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 export default function QuotationReport() {
   const { id } = useParams();
   const nav = useNavigate();
   const [quotation, setQuotation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -29,31 +29,31 @@ export default function QuotationReport() {
 
         if (error) throw error;
         setQuotation(data);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Report load error:", err);
+        setError(err.message || "Failed to load quotation");
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
+    if (id) fetchData();
   }, [id]);
 
   if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-slate-50">
-      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+    <div style={{ background: 'white', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
     </div>
   );
 
-  if (!quotation) return (
-    <div className="flex h-screen flex-col items-center justify-center gap-4">
-      <p>Quotation not found</p>
-      <Button onClick={() => nav("/quotations")}><ArrowLeft className="h-4 w-4 mr-2" /> Back to Quotations</Button>
+  if (error || !quotation) return (
+    <div style={{ color: 'red', padding: '40px', background: 'white', minHeight: '100vh', fontFamily: 'sans-serif' }}>
+      <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>Failed to load quotation.</h2>
+      <p>ID: {id}</p>
+      <pre style={{ marginTop: '20px', padding: '10px', background: '#f5f5f5', color: '#d32f2f' }}>{error}</pre>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <QuotationDocument quotation={quotation} onClose={() => nav("/quotations")} />
-    </div>
+    <QuotationDocument quotation={quotation} onClose={() => nav("/quotations")} />
   );
 }
