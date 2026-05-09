@@ -1,105 +1,175 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Save, Trash2, Eye, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { ArrowLeft, Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Section, FormGrid, FormRow } from "@/components/shared/FormShell";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-type Item = { id: number; product_id: string; qty: number; price: number };
-type Customer = { id: string; name: string };
-type Product = { id: string; name: string };
+type Item = { id: string; product_id: string; product_name: string; qty: number; price: number };
 
 export default function CreateQuotation() {
   const nav = useNavigate();
-  const [items, setItems] = useState<Item[]>([
-    { id: Date.now(), product_id: "", qty: 1, price: 0 },
-  ]);
-  
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
-  
-  const [customerId, setCustomerId] = useState("");
-  const [currency, setCurrency] = useState("usd");
-  const [validUntil, setValidUntil] = useState("");
+  const location = useLocation();
+  const { profile } = useAuth();
+  const leadFromState = location.state?.lead;
   const [saving, setSaving] = useState(false);
+  const [leadsList, setLeadsList] = useState<any[]>([]);
+  const [productsList, setProductsList] = useState<any[]>([]);
+  const [containerTypesList, setContainerTypesList] = useState<any[]>([]);
+  const [packagingTypesList, setPackagingTypesList] = useState<any[]>([]);
+
+  // Form State
+  const [selectedLeadId, setSelectedLeadId] = useState(leadFromState?.id || "");
+  const [customerName, setCustomerName] = useState(leadFromState?.company_name || "");
+  const [currency, setCurrency] = useState("USD");
+  const [validUntil, setValidUntil] = useState("");
+  const [incoterm, setIncoterm] = useState("CIF");
+  const [containerType, setContainerType] = useState("");
+  const [packagingType, setPackagingType] = useState("");
+  const [taxRate, setTaxRate] = useState(0);
+  const [paymentTerms, setPaymentTerms] = useState("90 % of the invoice value to be paid in advance, and the remaining 10 % of the invoice value to be paid after the loading of goods.\n\nNote : Including packing, loading and Transport.");
+  
+  const [items, setItems] = useState<Item[]>(
+    leadFromState?.interested_product 
+      ? [{ id: Date.now().toString(), product_id: "", product_name: leadFromState.interested_product, qty: 1, price: 0 }]
+      : [{ id: Date.now().toString(), product_id: "", product_name: "", qty: 1, price: 0 }]
+  );
+
+  // New Packaging Type State
+  const [isPkgModalOpen, setIsPkgModalOpen] = useState(false);
+  const [newPkgName, setNewPkgName] = useState("");
+  const [savingPkg, setSavingPkg] = useState(false);
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const [custRes, prodRes] = await Promise.all([
-          supabase.from("customers").select("id, name").order("name"),
-          supabase.from("products").select("id, name").order("name")
-        ]);
-        if (custRes.error) throw custRes.error;
-        if (prodRes.error) throw prodRes.error;
-        
-        setCustomers(custRes.data || []);
-        setProducts(prodRes.data || []);
-      } catch (error: any) {
-        toast.error("Failed to load options");
-      } finally {
-        setLoadingData(false);
-      }
-    }
+    const loadData = async () => {
+      if (!profile?.company_id) return;
+      const [leadsRes, productsRes, containersRes, pkgsRes] = await Promise.all([
+        supabase.from('leads').select('*').eq('company_id', profile.company_id),
+        supabase.from('products').select('*').eq('company_id', profile.company_id),
+        supabase.from('container_types').select('name').order('name'),
+        supabase.from('packaging_types').select('name').order('name')
+      ]);
+      if (leadsRes.data) setLeadsList(leadsRes.data);
+      if (productsRes.data) setProductsList(productsRes.data);
+      if (containersRes.data) setContainerTypesList(containersRes.data);
+      if (pkgsRes.data) setPackagingTypesList(pkgsRes.data);
+    };
     loadData();
-  }, []);
+  }, [profile?.company_id]);
 
-  const addItem = () => setItems((s) => [...s, { id: Date.now(), product_id: "", qty: 1, price: 0 }]);
-  const removeItem = (id: number) => setItems((s) => s.filter((i) => i.id !== id));
-  const updateItem = (id: number, patch: Partial<Item>) => setItems((s) => s.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  const loadPackagingTypes = async () => {
+    const { data } = await supabase.from('packaging_types').select('name').order('name');
+    if (data) setPackagingTypesList(data);
+  };
+
+  const handleAddPackaging = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPkgName) return toast.error("Packaging type name is required");
+    
+    setSavingPkg(true);
+    try {
+      const { error } = await supabase.from("packaging_types").insert({ name: newPkgName });
+      if (error) throw error;
+      toast.success("New packaging type added successfully");
+      setIsPkgModalOpen(false);
+      setNewPkgName("");
+      loadPackagingTypes();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add packaging type");
+    } finally {
+      setSavingPkg(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedLeadId) return;
+    const lead = leadsList.find(l => l.id === selectedLeadId);
+    if (lead) {
+      setCustomerName(lead.company_name || lead.contact_name);
+    }
+  }, [selectedLeadId, leadsList]);
+
+  const addItem = () => setItems((s) => [...s, { id: Date.now().toString(), product_id: "", product_name: "", qty: 1, price: 0 }]);
+  const removeItem = (id: string) => setItems((s) => s.filter((i) => i.id !== id));
+  const updateItem = (id: string, patch: Partial<Item>) => setItems((s) => s.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   
-  const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
-  const tax = subtotal * 0.18;
-  const total = subtotal + tax;
+  const subtotal = items.reduce((s, i) => s + (Number(i.qty) * Number(i.price)), 0);
+  const taxAmount = (subtotal * taxRate) / 100;
+  const totalAmount = subtotal + taxAmount;
 
   const handleSave = async () => {
-    if (!customerId) return toast.error("Please select a customer");
-    const validItems = items.filter(i => i.product_id && i.qty > 0 && i.price >= 0);
-    if (validItems.length === 0) return toast.error("Please add at least one valid line item");
+    if (!customerName || items.length === 0 || !items[0].product_name) {
+      return toast.error("Please provide a customer name and at least one product.");
+    }
 
     setSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not logged in");
+      // 1. Create Customer record if needed
+      let customerId = null;
+      const { data: custData, error: custErr } = await supabase
+        .from('customers')
+        .insert({ company_id: profile!.company_id, name: customerName })
+        .select('id').single();
       
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", session.user.id).single();
-      if (!profile?.company_id) throw new Error("Company ID not found");
+      if (!custErr && custData) customerId = custData.id;
 
-      // Insert quotation
-      const quoteNumber = `QT-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`;
-      const { data: quote, error: quoteErr } = await supabase.from("quotations").insert({
-        company_id: profile.company_id,
-        customer_id: customerId,
-        quotation_number: quoteNumber,
-        total_amount: total,
-        currency: currency.toUpperCase(),
-        valid_until: validUntil || null,
-        status: "Draft"
-      }).select("id").single();
+      // 2. Create Quotation
+      const year = new Date().getFullYear();
+      const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const quoteNumber = `QT-${year}-${rand}`;
+
+      const { data: quoteData, error: quoteErr } = await supabase
+        .from('quotations')
+        .insert({
+          company_id: profile!.company_id,
+          customer_id: customerId,
+          quotation_number: quoteNumber,
+          amount: totalAmount,
+          subtotal: subtotal,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
+          container_type: containerType || null,
+          packaging_type: packagingType || null,
+          currency,
+          status: 'Draft',
+          items_count: items.length,
+          valid_until: validUntil || null,
+          payment_terms: paymentTerms,
+          lead_id: selectedLeadId || null
+        })
+        .select('id').single();
 
       if (quoteErr) throw quoteErr;
 
-      // Insert items
-      const itemsToInsert = validItems.map(i => ({
-        quotation_id: quote.id,
-        product_id: i.product_id,
-        quantity: i.qty,
-        unit_price: i.price,
-        total_price: i.qty * i.price
+      // 3. Create Quotation Items
+      const insertItems = items.filter(i => i.product_name).map(i => ({
+        quotation_id: quoteData.id,
+        product_id: i.product_id || null, 
+        quantity: Number(i.qty),
+        unit_price: Number(i.price),
+        total_price: Number(i.qty) * Number(i.price)
       }));
 
-      const { error: itemsErr } = await supabase.from("quotation_items").insert(itemsToInsert);
-      if (itemsErr) throw itemsErr;
+      if (insertItems.length > 0) {
+        const { error: itemsErr } = await supabase.from('quotation_items').insert(insertItems);
+        if (itemsErr) throw itemsErr;
+      }
+
+      if (selectedLeadId) {
+        await supabase.from("leads").update({ stage: "negotiation" }).eq("id", selectedLeadId);
+      }
 
       toast.success("Quotation created successfully!");
       nav("/quotations");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save quotation");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to create quotation");
     } finally {
       setSaving(false);
     }
@@ -110,41 +180,106 @@ export default function CreateQuotation() {
       <PageHeader title="Create Quotation" breadcrumbs={[{ label: "Quotations", to: "/quotations" }, { label: "New" }]}
         actions={<>
           <Button variant="outline" size="sm" onClick={() => nav(-1)}><ArrowLeft className="h-4 w-4 mr-1.5" />Cancel</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving || loadingData}>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save
+            Save Quotation
           </Button>
         </>}
       />
+
+      <Dialog open={isPkgModalOpen} onOpenChange={setIsPkgModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add New Packaging Type</DialogTitle></DialogHeader>
+          <form onSubmit={handleAddPackaging} className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Packaging Name *</label>
+              <Input value={newPkgName} onChange={e => setNewPkgName(e.target.value)} placeholder="e.g., Plastic Bag, Box, etc." required />
+            </div>
+            <Button type="submit" disabled={savingPkg} className="w-full">
+              {savingPkg && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Packaging Type
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-4">
         <Section title="Customer & Terms">
           <FormGrid cols={3}>
-            <FormRow label="Customer" required>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger><SelectValue placeholder={loadingData ? "Loading..." : "Select customer"} /></SelectTrigger>
+            <FormRow label="Select CRM Lead">
+              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+                <SelectTrigger><SelectValue placeholder="Link a lead (optional)" /></SelectTrigger>
                 <SelectContent>
-                  {customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  {leadsList.map(l => (
+                    <SelectItem key={l.id} value={l.id}>{l.company_name || l.contact_name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+            </FormRow>
+            <FormRow label="Customer Name *" required>
+              <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Company or contact name" />
             </FormRow>
             <FormRow label="Currency">
               <Select value={currency} onValueChange={setCurrency}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="usd">USD</SelectItem><SelectItem value="eur">EUR</SelectItem><SelectItem value="inr">INR</SelectItem></SelectContent>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="INR">INR</SelectItem>
+                </SelectContent>
               </Select>
             </FormRow>
-            <FormRow label="Valid until"><Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} /></FormRow>
-            <FormRow label="Incoterm"><Select><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger><SelectContent><SelectItem value="fob">FOB</SelectItem><SelectItem value="cif">CIF</SelectItem><SelectItem value="exw">EXW</SelectItem></SelectContent></Select></FormRow>
-            <FormRow label="Payment terms"><Select><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger><SelectContent><SelectItem value="net30">Net 30</SelectItem><SelectItem value="net60">Net 60</SelectItem><SelectItem value="lc">LC at sight</SelectItem></SelectContent></Select></FormRow>
-            <FormRow label="Reference"><Input placeholder="Customer PO #" /></FormRow>
+            <FormRow label="Valid until">
+              <Input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
+            </FormRow>
+            <FormRow label="Incoterm">
+              <Select value={incoterm} onValueChange={setIncoterm}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FOB">FOB</SelectItem>
+                  <SelectItem value="CIF">CIF</SelectItem>
+                  <SelectItem value="EXW">EXW</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow label="Container Type">
+              <Select value={containerType} onValueChange={setContainerType}>
+                <SelectTrigger><SelectValue placeholder="Select container type" /></SelectTrigger>
+                <SelectContent>
+                  {containerTypesList.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow label="Packaging Type">
+              <div className="flex gap-2">
+                <Select value={packagingType} onValueChange={setPackagingType}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select packaging type" /></SelectTrigger>
+                  <SelectContent>
+                    {packagingTypesList.map(p => <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => setIsPkgModalOpen(true)} title="Add new packaging type">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </FormRow>
           </FormGrid>
+          <div className="mt-4">
+            <FormRow label="Terms of Payment">
+              <textarea 
+                className="w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={paymentTerms} 
+                onChange={e => setPaymentTerms(e.target.value)} 
+                placeholder="Enter payment terms..."
+              />
+            </FormRow>
+          </div>
         </Section>
 
-        <Section title="Line Items" actions={<Button variant="outline" size="sm" onClick={addItem}><Plus className="h-3.5 w-3.5 mr-1" />Add Item</Button>}>
+        <Section title="Line Items" actions={<Button variant="outline" size="sm" onClick={addItem} disabled={saving}><Plus className="h-3.5 w-3.5 mr-1" />Add Item</Button>}>
           <div className="overflow-x-auto -mx-5">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-border">
-                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-5 py-2">Product</th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-5 py-2">Product Name</th>
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2 w-24">Qty</th>
                 <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2 w-32">Unit Price</th>
                 <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider px-3 py-2 w-32">Total</th>
@@ -154,27 +289,49 @@ export default function CreateQuotation() {
                 {items.map((i) => (
                   <tr key={i.id} className="border-b last:border-0 border-border">
                     <td className="px-5 py-2">
-                      <Select value={i.product_id} onValueChange={(val) => updateItem(i.id, { product_id: val })}>
-                        <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
-                        <SelectContent>
-                          {products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                      <Input 
+                        value={i.product_name} 
+                        onChange={(e) => updateItem(i.id, { product_name: e.target.value })} 
+                        placeholder="Type product name..." 
+                        list={`products-list-${i.id}`}
+                      />
+                      <datalist id={`products-list-${i.id}`}>
+                        {productsList.map(p => <option key={p.id} value={p.name} />)}
+                      </datalist>
                     </td>
-                    <td className="px-3 py-2"><Input type="number" min="1" value={i.qty} onChange={(e) => updateItem(i.id, { qty: +e.target.value || 0 })} /></td>
-                    <td className="px-3 py-2"><Input type="number" min="0" step="0.01" value={i.price} onChange={(e) => updateItem(i.id, { price: +e.target.value || 0 })} /></td>
+                    <td className="px-3 py-2"><Input type="number" min="1" value={i.qty} onChange={(e) => updateItem(i.id, { qty: Number(e.target.value) || 0 })} /></td>
+                    <td className="px-3 py-2"><Input type="number" min="0" value={i.price} onChange={(e) => updateItem(i.id, { price: Number(e.target.value) || 0 })} /></td>
                     <td className="px-3 py-2 text-right tabular-nums font-medium">{(i.qty * i.price).toLocaleString()}</td>
-                    <td className="px-3 py-2"><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeItem(i.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></td>
+                    <td className="px-3 py-2"><Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => removeItem(i.id)} disabled={items.length === 1}><Trash2 className="h-3.5 w-3.5" /></Button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="mt-4 flex justify-end">
-            <div className="w-64 space-y-1.5 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">${subtotal.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Tax (18%)</span><span className="tabular-nums">${tax.toLocaleString()}</span></div>
-              <div className="flex justify-between pt-2 border-t border-border font-semibold"><span>Total</span><span className="tabular-nums">${total.toLocaleString()}</span></div>
+            <div className="w-64 space-y-2 text-sm">
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>Subtotal</span>
+                <span>{currency === 'USD' ? '$' : currency} {subtotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  Tax (%)
+                  <Input 
+                    type="number" 
+                    min="0" 
+                    className="h-7 w-16 text-right px-2 py-0" 
+                    value={taxRate || ""} 
+                    onChange={e => setTaxRate(Number(e.target.value) || 0)} 
+                    placeholder="0"
+                  />
+                </span>
+                <span>{currency === 'USD' ? '$' : currency} {taxAmount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-border font-bold text-base">
+                <span>Total Amount</span>
+                <span className="tabular-nums text-primary">{currency === 'USD' ? '$' : currency} {totalAmount.toLocaleString()}</span>
+              </div>
             </div>
           </div>
         </Section>

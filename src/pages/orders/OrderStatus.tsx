@@ -19,6 +19,10 @@ export default function OrderStatus() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const getCount = (statuses: string[]) => {
+    return orders.filter(o => statuses.includes(o.status)).length;
+  };
+
   useEffect(() => {
     const fetchOrders = async () => {
       try {

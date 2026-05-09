@@ -1,326 +1,274 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Plus, Loader2, Save, Receipt } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus } from "lucide-react";
-import { toast } from "sonner";
 
 export default function PaymentsRegister() {
-  const { roleSlugs, loading: authLoading, profile } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [open, setOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    party_name: "",
-    reference_no: "",
-    method: "Wire Transfer",
-    amount: "",
-    currency: "USD",
-    received_at: format(new Date(), "yyyy-MM-dd"),
-    status: "Pending",
-    remarks: "",
-  });
+  // Form State
+  const [partyName, setPartyName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState("Wire Transfer");
+  const [ref, setRef] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [orderId, setOrderId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!authLoading) {
-      if (roleSlugs.has("farmer") || roleSlugs.has("buyer")) {
-        navigate("/dashboard", { replace: true });
-      }
-    }
-  }, [authLoading, roleSlugs, navigate]);
-
-  const { data: payments = [], isLoading: isLoadingPayments } = useQuery({
-    queryKey: ['payments'],
+  const { data: allPayments, isLoading } = useQuery({
+    queryKey: ["payments_live", profile?.company_id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('payments')
-        .select(`
-          id,
-          payment_number,
-          amount,
-          currency,
-          method,
-          status,
-          received_at,
-          party_name,
-          reference_no,
-          remarks,
-          invoices (
-            invoice_number
-          ),
-          customers (
-            name
-          )
-        `);
+      if (!profile?.company_id) return [];
+
+      // Fetch confirmed payments
+      const { data: pData, error: pError } = await supabase
+        .from("payments")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .order("created_at", { ascending: false });
       
-      if (error) throw error;
-      return data || [];
+      if (pError) throw pError;
+
+      // Fetch pending export orders (unpaid)
+      const { data: eData, error: eError } = await supabase
+        .from("export_orders")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .eq("payment_status", "unpaid");
+
+      if (eError) throw eError;
+
+      const formattedPayments = (pData || []).map(p => ({
+        id: p.payment_number || p.id.split('-')[0].toUpperCase(),
+        party: p.payer_name || "Unknown",
+        ref: p.reference_number || "Direct",
+        method: p.method,
+        amount: p.amount,
+        currency: p.currency,
+        status: p.status,
+        date: p.received_at ? format(new Date(p.received_at), "yyyy-MM-dd") : "—"
+      }));
+
+      const formattedOrders = (eData || []).map(e => ({
+        id: e.order_number,
+        party: e.customer_name || "Unknown",
+        ref: e.order_number,
+        method: "Pending",
+        amount: e.total_amount,
+        currency: e.currency,
+        status: "Unpaid",
+        date: e.created_at ? format(new Date(e.created_at), "yyyy-MM-dd") : "—"
+      }));
+
+      return [...formattedPayments, ...formattedOrders];
     },
-    enabled: !!profile?.company_id,
+    enabled: !!profile?.company_id
   });
 
-  const { data: invoices = [], isLoading: isLoadingInvoices } = useQuery({
-    queryKey: ['invoices'],
+  const { data: unpaidOrders = [] } = useQuery({
+    queryKey: ["unpaid_export_orders", profile?.company_id],
     queryFn: async () => {
+      if (!profile?.company_id) return [];
       const { data, error } = await supabase
-        .from('invoices')
-        .select(`
-          id,
-          invoice_number,
-          amount,
-          currency,
-          status,
-          due_at,
-          sales_orders (
-            order_number
-          ),
-          customers (
-            name
-          )
-        `)
-        .neq('status', 'Paid');
-      
+        .from("export_orders")
+        .select("id, order_number, customer_name, total_amount, currency")
+        .eq("company_id", profile.company_id)
+        .eq("payment_status", "unpaid");
       if (error) throw error;
-      return data || [];
+      return data;
     },
-    enabled: !!profile?.company_id,
+    enabled: !!profile?.company_id && isDialogOpen
   });
 
-  const addPayment = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      const { data: inserted, error } = await supabase.from('payments').insert({
-        company_id: profile?.company_id,
-        party_name: data.party_name,
-        reference_no: data.reference_no,
-        payment_number: `PAY-${Date.now().toString().slice(-6)}`,
-        method: data.method,
-        amount: parseFloat(data.amount),
-        currency: data.currency,
-        received_at: new Date(data.received_at).toISOString(),
-        status: data.status,
-        remarks: data.remarks,
-      });
-      if (error) throw error;
-      return inserted;
-    },
-    onSuccess: () => {
-      toast.success("Payment added successfully");
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
-      setOpen(false);
-      setFormData({
-        party_name: "",
-        reference_no: "",
-        method: "Wire Transfer",
-        amount: "",
-        currency: "USD",
-        received_at: format(new Date(), "yyyy-MM-dd"),
-        status: "Pending",
-        remarks: "",
-      });
-    },
-    onError: (err) => {
-      toast.error(err.message || "Failed to add payment");
-    }
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.party_name || !formData.reference_no || !formData.amount || !formData.received_at) {
-      toast.error("Please fill all required fields");
+  const handleAddPayment = async () => {
+    if (!partyName || !amount) {
+      toast.error("Please fill in required fields");
       return;
     }
-    addPayment.mutate(formData);
+
+    setIsSubmitting(true);
+    try {
+      const payNum = `PAY-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`;
+
+      const { error } = await supabase.from("payments").insert({
+        company_id: profile?.company_id,
+        payment_number: payNum,
+        payer_name: partyName,
+        amount: Number(amount),
+        currency,
+        method,
+        status: 'Completed',
+        reference_number: ref,
+        received_at: new Date().toISOString(),
+        created_by: profile?.id
+      });
+
+      if (error) throw error;
+
+      // Update order payment status if linked
+      if (orderId) {
+        await supabase
+          .from("export_orders")
+          .update({ payment_status: 'paid' })
+          .eq("id", orderId);
+      }
+
+      toast.success("Payment registered successfully");
+      setIsDialogOpen(false);
+      setOrderId(null);
+      setPartyName("");
+      setAmount("");
+      setRef("");
+      queryClient.invalidateQueries({ queryKey: ["payments_live"] });
+      queryClient.invalidateQueries({ queryKey: ["export_orders"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to register payment");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  if (authLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (roleSlugs.has("farmer") || roleSlugs.has("buyer")) return null;
-
-  const isLoading = isLoadingPayments || isLoadingInvoices;
-
-  const all = [
-    ...payments.map((p: any) => ({
-      id: p.payment_number,
-      ref: p.reference_no || p.invoices?.invoice_number || 'N/A',
-      party: p.party_name || p.customers?.name || 'Unknown',
-      amount: p.amount,
-      currency: p.currency,
-      method: p.method,
-      status: p.status,
-      date: p.received_at ? format(new Date(p.received_at), 'MMM dd, yyyy') : '—',
-    })),
-    ...invoices.map((i: any) => ({
-      id: i.invoice_number,
-      ref: i.sales_orders?.order_number || 'N/A',
-      party: i.customers?.name || 'Unknown',
-      amount: i.amount,
-      currency: i.currency,
-      method: "Pending",
-      status: i.status,
-      date: i.due_at ? format(new Date(i.due_at), 'MMM dd, yyyy') : '—',
-    })),
-  ];
+  const handleOrderSelect = (id: string) => {
+    setOrderId(id);
+    const order = unpaidOrders.find(o => o.id === id);
+    if (order) {
+      setPartyName(order.customer_name);
+      setAmount(order.total_amount.toString());
+      setCurrency(order.currency);
+      setRef(order.order_number);
+    }
+  };
 
   return (
-    <div>
+    <div className="p-6">
       <PageHeader 
         title="Payment Register" 
         description="All incoming and outstanding payments" 
         breadcrumbs={[{ label: "Payments" }]} 
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-green-600 hover:bg-green-700 text-white gap-2">
-                <Plus className="h-4 w-4" /> Add Payment
+              <Button className="btn-gold">
+                <Plus className="mr-2 h-4 w-4" /> Add Payment
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="erp-card border-white/10 max-w-lg">
               <DialogHeader>
-                <DialogTitle>Add New Payment</DialogTitle>
+                <DialogTitle className="flex items-center gap-2">
+                  <span className="w-1 h-6 bg-primary rounded-full" />
+                  Register Payment
+                </DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4 py-4">
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Link to Export Order (Optional)</Label>
+                  <Select value={orderId || "none"} onValueChange={(val) => val === "none" ? setOrderId(null) : handleOrderSelect(val)}>
+                    <SelectTrigger className="bg-white/5">
+                      <SelectValue placeholder="Select an unpaid order" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card">
+                      <SelectItem value="none">Manual Entry (No Order)</SelectItem>
+                      {unpaidOrders.map(o => (
+                        <SelectItem key={o.id} value={o.id}>
+                          {o.order_number} — {o.customer_name} ({o.currency} {o.total_amount})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Payer Name (Party) *</Label>
+                  <Input placeholder="e.g. Osaka Electronics" value={partyName} onChange={(e) => setPartyName(e.target.value)} className="bg-white/5" />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="party_name">Party Name *</Label>
-                    <Input 
-                      id="party_name" 
-                      value={formData.party_name}
-                      onChange={(e) => setFormData({...formData, party_name: e.target.value})}
-                      placeholder="e.g. Acme Corp" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reference_no">Reference No *</Label>
-                    <Input 
-                      id="reference_no" 
-                      value={formData.reference_no}
-                      onChange={(e) => setFormData({...formData, reference_no: e.target.value})}
-                      placeholder="Invoice or Order Ref" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Payment Method</Label>
-                    <Select value={formData.method} onValueChange={(val) => setFormData({...formData, method: val})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Wire Transfer">Wire Transfer</SelectItem>
-                        <SelectItem value="TT">TT</SelectItem>
-                        <SelectItem value="LC">LC</SelectItem>
-                        <SelectItem value="Cheque">Cheque</SelectItem>
-                        <SelectItem value="Cash">Cash</SelectItem>
-                        <SelectItem value="Online">Online</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select value={formData.status} onValueChange={(val) => setFormData({...formData, status: val})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Pending">Pending</SelectItem>
-                        <SelectItem value="Received">Received</SelectItem>
-                        <SelectItem value="Partial">Partial</SelectItem>
-                        <SelectItem value="Overdue">Overdue</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">Amount *</Label>
-                    <Input 
-                      id="amount" 
-                      type="number" 
-                      step="0.01"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                      placeholder="0.00" 
-                      required 
-                    />
+                    <Label>Amount *</Label>
+                    <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="bg-white/5" />
                   </div>
                   <div className="space-y-2">
                     <Label>Currency</Label>
-                    <Select value={formData.currency} onValueChange={(val) => setFormData({...formData, currency: val})}>
-                      <SelectTrigger>
+                    <Select value={currency} onValueChange={setCurrency}>
+                      <SelectTrigger className="bg-white/5">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                        <SelectItem value="INR">INR</SelectItem>
+                      <SelectContent className="bg-card">
+                        <SelectItem value="USD">USD ($)</SelectItem>
+                        <SelectItem value="INR">INR (₹)</SelectItem>
+                        <SelectItem value="EUR">EUR (€)</SelectItem>
+                        <SelectItem value="AED">AED (د.إ)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2 col-span-2">
-                    <Label htmlFor="received_at">Payment Date *</Label>
-                    <Input 
-                      id="received_at" 
-                      type="date"
-                      value={formData.received_at}
-                      onChange={(e) => setFormData({...formData, received_at: e.target.value})}
-                      required 
-                    />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Method</Label>
+                    <Select value={method} onValueChange={setMethod}>
+                      <SelectTrigger className="bg-white/5">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card">
+                        <SelectItem value="Wire Transfer">Wire Transfer</SelectItem>
+                        <SelectItem value="LC">Letter of Credit (LC)</SelectItem>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="Check">Check</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="space-y-2 col-span-2">
-                    <Label htmlFor="remarks">Remarks</Label>
-                    <Textarea 
-                      id="remarks" 
-                      value={formData.remarks}
-                      onChange={(e) => setFormData({...formData, remarks: e.target.value})}
-                      placeholder="Optional notes..." 
-                      className="resize-none"
-                    />
+                  <div className="space-y-2">
+                    <Label>Reference # / Order #</Label>
+                    <Input placeholder="INV-2026-..." value={ref} onChange={(e) => setRef(e.target.value)} className="bg-white/5" />
                   </div>
                 </div>
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={addPayment.isPending} className="bg-green-600 hover:bg-green-700 text-white">
-                    {addPayment.isPending ? "Saving..." : "Save Payment"}
-                  </Button>
-                </div>
-              </form>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                <Button className="btn-gold" onClick={handleAddPayment} disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Register
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         }
       />
+
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+        </div>
+      ) : !allPayments || allPayments.length === 0 ? (
+        <div className="text-center py-24 border border-dashed border-white/10 rounded-xl">
+          <Receipt className="h-12 w-12 mx-auto text-muted-foreground opacity-20 mb-4" />
+          <h3 className="text-lg font-medium">No payments recorded</h3>
+          <p className="text-muted-foreground text-sm max-w-xs mx-auto mt-1">
+            There are no live payments or pending export orders in your database.
+          </p>
         </div>
       ) : (
         <DataTable
-          data={all}
+          data={allPayments}
           searchKeys={["id", "party", "ref"]}
           columns={[
-            { key: "id", header: "ID", render: (r) => <span className="font-mono text-xs">{r.id}</span> },
+            { key: "id", header: "ID", render: (r) => <span className="font-mono text-xs font-bold text-primary">{r.id}</span> },
             { key: "party", header: "Party", render: (r) => <span className="font-medium">{r.party}</span> },
             { key: "ref", header: "Reference", render: (r) => <span className="font-mono text-xs text-muted-foreground">{r.ref}</span> },
             { key: "method", header: "Method", render: (r) => <span className="text-sm">{r.method}</span> },
-            { key: "amount", header: "Amount", render: (r) => <span className="font-medium tabular-nums">{r.currency} {r.amount.toLocaleString()}</span> },
+            { key: "amount", header: "Amount", render: (r) => <span className="font-bold tabular-nums text-white">{r.currency} {Number(r.amount).toLocaleString()}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
             { key: "date", header: "Date", render: (r) => <span className="text-xs text-muted-foreground">{r.date}</span> },
           ]}

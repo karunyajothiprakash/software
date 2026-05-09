@@ -75,19 +75,21 @@ export default function DeliveryStatus() {
               );
             }},
             { key: "status", header: "Status", render: (r) => (
-              <Select value={r.status} onValueChange={(val) => updateStatus(r.id, val)}>
-                <SelectTrigger className="h-8 w-[130px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="Processing">Processing</SelectItem>
-                  <SelectItem value="In Transit">In Transit</SelectItem>
-                  <SelectItem value="Delivered">Delivered</SelectItem>
-                </SelectContent>
-              </Select>
+              <div onClick={(e) => e.stopPropagation()}>
+                <Select value={r.status || "Pending"} onValueChange={(val) => updateStatus(r.id, val)}>
+                  <SelectTrigger className="h-8 w-[130px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Processing">Processing</SelectItem>
+                    <SelectItem value="In Transit">In Transit</SelectItem>
+                    <SelectItem value="Delivered">Delivered</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             )},
-            { key: "eta", header: "ETA", render: (r) => <span className="text-xs">{r.eta || "TBD"}</span> },
+            { key: "eta", header: "ETA", render: (r) => <span className="text-xs">{r.eta ? new Date(r.eta).toLocaleDateString() : "TBD"}</span> },
           ]}
         />
       )}

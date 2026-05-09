@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes, Outlet } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +17,9 @@ import CompleteProfile from "./pages/CompleteProfile";
 import WaitingApproval from "./pages/WaitingApproval";
 import Pending from "./pages/Pending";
 import Approvals from "./pages/Approvals";
+import InvoicePreview from "./pages/documents/InvoicePreview";
+import PackingListPreview from "./pages/documents/PackingListPreview";
+import CertificatePreview from "./pages/documents/CertificatePreview";
 // (Quotations Approvals is imported below as QuotationApprovals to avoid name clash)
 
 // Dashboards
@@ -61,7 +64,9 @@ import LowStockAlerts from "./pages/inventory/LowStockAlerts";
 import QuotationsList from "./pages/quotations/QuotationsList";
 import CreateQuotation from "./pages/quotations/CreateQuotation";
 import QuotationPreview from "./pages/quotations/QuotationPreview";
+import PublicQuotationView from "./pages/quotations/PublicQuotationView";
 import QuotationApprovals from "./pages/quotations/Approvals";
+import QuotationReport from "./pages/quotations/QuotationReport";
 import ConvertQuotation from "./pages/quotations/Convert";
 
 // Orders
@@ -80,11 +85,10 @@ import DeliveryStatus from "./pages/shipments/DeliveryStatus";
 
 // Documents
 import Invoices from "./pages/documents/Invoices";
-import InvoicePreview from "./pages/documents/InvoicePreview";
 import PackingLists from "./pages/documents/PackingLists";
 import Certificates from "./pages/documents/Certificates";
-import BillsOfLading from "./pages/documents/BillsOfLading";
 import DocumentViewer from "./pages/documents/DocumentViewer";
+import InvoiceReport from "./pages/documents/InvoiceReport";
 
 // Payments
 import PaymentsRegister from "./pages/payments/PaymentsRegister";
@@ -119,11 +123,11 @@ const App = () => (
             <Route path="/pending" element={<Pending />} />
             <Route path="/complete-profile" element={<CompleteProfile />} />
             <Route path="/waiting-approval" element={<WaitingApproval />} />
-            
-            {/* Print Layout Routes (No Auth Required) */}
             <Route path="/invoices/:id/preview" element={<InvoicePreview />} />
-
-            {/* Main App Layout */}
+            <Route path="/packing-lists/:id/preview" element={<PackingListPreview />} />
+            <Route path="/certificates/:id/preview" element={<CertificatePreview />} />
+            <Route path="/share/quote/:id" element={<PublicQuotationView />} />
+            
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Navigate to="/dashboards/executive" replace />} />
               <Route path="/approvals" element={<Approvals />} />
@@ -173,6 +177,7 @@ const App = () => (
               <Route path="/quotations/approvals" element={<QuotationApprovals />} />
               <Route path="/quotations/convert" element={<ConvertQuotation />} />
               <Route path="/quotations/:id" element={<QuotationPreview />} />
+              <Route path="/quotations/:id/report" element={<QuotationReport />} />
 
                 {/* CRM */}
                 <Route path="/crm/activities" element={<LeadActivities />} />
@@ -198,8 +203,8 @@ const App = () => (
               <Route path="/documents/invoices" element={<Invoices />} />
               <Route path="/documents/packing-lists" element={<PackingLists />} />
               <Route path="/documents/certificates" element={<Certificates />} />
-              <Route path="/documents/bills-of-lading" element={<BillsOfLading />} />
               <Route path="/documents/viewer" element={<DocumentViewer />} />
+              <Route path="/documents/invoices/:id" element={<InvoiceReport />} />
 
               {/* Payments */}
               <Route path="/payments" element={<PaymentsRegister />} />
