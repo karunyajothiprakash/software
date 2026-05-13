@@ -1,8 +1,8 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { StatCard } from '../../components/shared/StatCard'
 import { Badge } from '../../components/ui/badge'
-import { Tag } from '../../components/ui/tag'
 import { parties } from '../../data/mockData'
 import { Plus, AlertTriangle } from 'lucide-react'
 
@@ -38,6 +38,7 @@ const SearchBar = ({ placeholder, value, onChange, children }) => (
 )
 
 export default function Parties() {
+  const nav = useNavigate()
   const [search, setSearch] = useState('')
   const [typeFilter, setType] = useState('All')
 
@@ -59,7 +60,9 @@ export default function Parties() {
         title="Parties"
         breadcrumbs={[{ label: 'Home' }, { label: 'Masters' }, { label: 'Parties' }]}
         actions={
-          <button 
+          <button
+            type="button"
+            onClick={() => nav('/tally/parties/create')}
             style={{
               display: 'flex',
               alignItems: 'center',

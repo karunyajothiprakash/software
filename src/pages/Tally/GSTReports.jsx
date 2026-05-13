@@ -108,6 +108,41 @@ export default function GSTReports() {
   const totIgst = filteredData.reduce((s, r) => s + (Number(r.igst) || 0), 0)
   const totTaxCollected = totCgst + totSgst + totIgst
 
+  const handleExport = () => {
+    if (filteredData.length === 0) {
+      toast.error('No data to export')
+      return
+    }
+
+    const headers = ['Date', 'Party', 'GSTIN', 'Invoice No', 'Taxable Amt', 'CGST', 'SGST', 'IGST', 'Total', 'Type']
+    const csvContent = [
+      headers.join(','),
+      ...filteredData.map(r => [
+        r.date,
+        `"${r.party || ''}"`,
+        `"${r.gstin || ''}"`,
+        r.invoice_no,
+        r.taxable_amt,
+        r.cgst,
+        r.sgst,
+        r.igst,
+        r.total,
+        r.type
+      ].join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `gst_report_${filter.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    toast.success('Exported successfully')
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -118,6 +153,7 @@ export default function GSTReports() {
             <input type="date" defaultValue="2026-03-01" className="force-gold-input rounded-[8px] px-[14px] py-[8px] w-36 text-sm transition-colors" />
             <input type="date" defaultValue="2026-03-31" className="force-gold-input rounded-[8px] px-[14px] py-[8px] w-36 text-sm transition-colors" />
             <button 
+              onClick={handleExport}
               style={{
                 display: 'flex',
                 alignItems: 'center',

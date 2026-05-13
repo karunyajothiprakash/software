@@ -5,12 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
 import { Plus, Trash2, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
 
-const ACCOUNTS = [
-  'Cash Account','Bank — HDFC','Sales Account','Purchase Account',
-  'CGST Payable','SGST Payable','IGST Payable','Raj Exports',
-  'Priya Traders','Office Rent','Salary Expense','Capital Account',
-  'Sundry Debtors','Stock in Hand',
-]
+
 
 const DEFAULT_ROWS = [
   { account: '', drcr: 'Dr', debit: '', credit: '', gst: 'None' },
@@ -39,6 +34,30 @@ function NewEntryForm({ onSaved }) {
   const [narration, setNarration] = useState('')
   const [rows, setRows] = useState(DEFAULT_ROWS)
   const [saving, setSaving] = useState(false)
+  const [accountsList, setAccountsList] = useState([
+    'Cash Account', 'Bank — HDFC', 'Sales Account', 'Purchase Account',
+    'CGST Payable', 'SGST Payable', 'IGST Payable', 'Office Rent', 
+    'Salary Expense', 'Capital Account', 'Sundry Debtors', 'Stock in Hand'
+  ])
+
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const { data: customers } = await supabase.from('customers').select('name')
+        const { data: suppliers } = await supabase.from('suppliers').select('name')
+        
+        const dynamicAccounts = [
+          ...accountsList,
+          ...(customers?.map(c => c.name) || []),
+          ...(suppliers?.map(s => s.name) || [])
+        ]
+        setAccountsList([...new Set(dynamicAccounts)].sort())
+      } catch (err) {
+        console.error("Failed to load dynamic accounts", err)
+      }
+    }
+    loadAccounts()
+  }, [])
 
   const addRow = () => setRows((r) => [...r, { account: '', drcr: 'Dr', debit: '', credit: '', gst: 'None' }])
   const delRow = (i) => setRows((r) => r.filter((_, idx) => idx !== i))
@@ -216,7 +235,7 @@ function NewEntryForm({ onSaved }) {
                   <td className="py-3 px-6">
                     <select value={row.account} onChange={e => upd(i, 'account', e.target.value)} className="force-gold-input rounded-[8px] px-[14px] py-[8px] w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm appearance-none transition-colors">
                       <option value="">Select Account</option>
-                      {ACCOUNTS.map((a) => <option key={a}>{a}</option>)}
+                      {accountsList.map((a) => <option key={a}>{a}</option>)}
                     </select>
                   </td>
                   <td className="py-3 px-4">
