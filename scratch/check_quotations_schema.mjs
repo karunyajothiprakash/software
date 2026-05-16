@@ -5,16 +5,13 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsI
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function check() {
-  const { data, error } = await supabase.from('export_orders').select('*').limit(1);
+  const { data, error } = await supabase.from('quotations').select('*').limit(1);
   if (data && data.length > 0) {
-    console.log("export_orders columns:", Object.keys(data[0]));
+    console.log("quotations columns:", Object.keys(data[0]));
+  } else if (error) {
+    console.error("Error checking quotations:", error);
   } else {
-    console.log("No data in export_orders or table not found");
-  }
-
-  const { data: data2 } = await supabase.from('export_shipments').select('*').limit(1);
-  if (data2 && data2.length > 0) {
-    console.log("export_shipments columns:", Object.keys(data2[0]));
+    console.log("No data in quotations");
   }
 }
 

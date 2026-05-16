@@ -22,22 +22,38 @@ export default function SupplierAnalytics() {
     const fetchData = async () => {
       try {
         const { count: supCount, error: supErr } = await supabase
-          .from("suppliers")
+          .from("farmers")
           .select("*", { count: "exact", head: true });
         
         if (supErr) throw supErr;
 
-        const { data: pos, error: poErr } = await supabase
+        const { data: poData, error: poErr } = await supabase
           .from("purchase_orders")
-          .select("id, status, total_amount, order_date, suppliers(name)");
+          .select("id, status, total, order_date, farmer_id");
 
         if (poErr) throw poErr;
 
+        const farmerIds = Array.from(new Set((poData || []).map(po => po.farmer_id).filter(Boolean)));
+        let farmersMap: Record<string, string> = {};
+        
+        if (farmerIds.length > 0) {
+          const { data: farmersData } = await supabase
+            .from("farmers")
+            .select("id, full_name")
+            .in("id", farmerIds);
+            
+          if (farmersData) {
+            farmersData.forEach(f => {
+              farmersMap[f.id] = f.full_name;
+            });
+          }
+        }
+
         // Calculate PO value this month
         const thisMonthStart = startOfMonth(new Date());
-        const monthValue = pos
+        const monthValue = poData
           ?.filter(po => new Date(po.order_date) >= thisMonthStart)
-          .reduce((sum, po) => sum + (Number(po.total_amount) || 0), 0) || 0;
+          .reduce((sum, po) => sum + (Number(po.total) || 0), 0) || 0;
 
         setStats({
           totalSuppliers: supCount || 0,
@@ -46,10 +62,10 @@ export default function SupplierAnalytics() {
 
         // Calculate top 5 suppliers
         const supplierTotals: Record<string, {name: string, value: number}> = {};
-        pos?.forEach(po => {
-          const supName = po.suppliers?.name || "Unknown";
+        poData?.forEach(po => {
+          const supName = farmersMap[po.farmer_id] || "Unknown";
           if (!supplierTotals[supName]) supplierTotals[supName] = { name: supName, value: 0 };
-          supplierTotals[supName].value += Number(po.total_amount) || 0;
+          supplierTotals[supName].value += Number(po.total) || 0;
         });
 
         const sortedSuppliers = Object.values(supplierTotals)

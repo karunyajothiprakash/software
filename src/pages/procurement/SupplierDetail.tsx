@@ -29,13 +29,13 @@ export default function SupplierDetail() {
       if (!id) return;
       try {
         const [supRes, poRes] = await Promise.all([
-          supabase.from("suppliers").select("*").eq("id", id).single(),
-          supabase.from("purchase_orders").select("*").eq("supplier_id", id).order("order_date", { ascending: false })
+          supabase.from("farmers").select("*").eq("id", id).single(),
+          supabase.from("purchase_orders").select("*").eq("farmer_id", id).order("order_date", { ascending: false })
         ]);
 
         if (supRes.error) throw supRes.error;
-        setSupplier(supRes.data);
-        setEditForm(supRes.data);
+        setSupplier({ ...supRes.data, name: supRes.data.full_name, status: supRes.data.is_active ? 'active' : 'inactive' });
+        setEditForm({ ...supRes.data, name: supRes.data.full_name, status: supRes.data.is_active ? 'active' : 'inactive' });
 
         if (!poRes.error) setPurchaseOrders(poRes.data);
 
@@ -54,15 +54,14 @@ export default function SupplierDetail() {
     setSaving(true);
     try {
       const { error } = await supabase
-        .from("suppliers")
+        .from("farmers")
         .update({
-          name: editForm.name,
-          contact_name: editForm.contact_name,
+          full_name: editForm.name,
           email: editForm.email,
           phone: editForm.phone,
-          city: editForm.city,
+          district: editForm.city, // Map city to district for farmers
           country: editForm.country,
-          status: editForm.status
+          is_active: editForm.status === 'active'
         })
         .eq("id", id);
 
@@ -287,7 +286,7 @@ export default function SupplierDetail() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {po.currency} {Number(po.total_amount)?.toLocaleString()}
+                        {po.currency} {Number(po.total)?.toLocaleString()}
                       </TableCell>
                     </TableRow>
                   ))}

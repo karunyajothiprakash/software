@@ -28,7 +28,7 @@ export function useNotifications() {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(50);
-    setNotifications((data as AppNotification[]) ?? []);
+    setNotifications((data as unknown as AppNotification[]) ?? []);
     setLoading(false);
   }, [profile?.company_id]);
 
@@ -57,26 +57,19 @@ export function useNotifications() {
   useEffect(() => {
     fetchNotifications();
 
-    // Real-time subscription
-    // Generate a unique channel name to prevent Strict Mode collisions
-    const channelName = `app-notifications-realtime-${Date.now()}-${Math.random()}`;
-    const channel = supabase.channel(channelName);
-
-    // Register ALL listeners BEFORE calling .subscribe()
-    channel.on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "app_notifications" },
-      () => {
-        fetchNotifications();
-      }
-    );
-
-    // Only invoke subscribe after listeners are added
-    channel.subscribe();
+    // Use a unique channel name to avoid Realtime 'already subscribed' crashes
+    // during React StrictMode double mounts or fast refreshes.
+    const channelId = `notifications-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const channel = supabase
+      .channel(channelId)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "app_notifications" },
+        () => fetchNotifications()
+      )
+      .subscribe();
 
     return () => {
-      // Unsubscribe and completely remove the channel to prevent duplicate subscriptions on re-renders
-      channel.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, [fetchNotifications]);

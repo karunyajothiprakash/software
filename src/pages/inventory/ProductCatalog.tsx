@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { Plus, Loader2, PackageOpen } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Plus, Loader2, PackageOpen, Trash2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/shared/DataTable";
@@ -10,6 +10,20 @@ import { supabase } from "@/integrations/supabase/client";
 
 export default function ProductCatalog() {
   const nav = useNavigate();
+  const queryClient = useQueryClient();
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete this product? This action cannot be undone.")) return;
+    try {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("Product deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete product");
+    }
+  };
 
   const { data: products, isLoading } = useQuery({
     queryKey: ["products"],
@@ -51,6 +65,22 @@ export default function ProductCatalog() {
             { key: "category", header: "Category", render: (r) => <span className="text-sm text-muted-foreground">{r.category || "—"}</span> },
             { key: "uom", header: "UOM", render: (r) => <span className="text-xs">{r.unit || r.uom || "—"}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.is_active ? "active" : "inactive"} /> },
+            { 
+              key: "actions", 
+              header: "", 
+              render: (r) => (
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    onClick={(e) => handleDelete(e, r.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) 
+            },
           ]}
         />
       )}

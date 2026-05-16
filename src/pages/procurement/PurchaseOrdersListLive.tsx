@@ -3,20 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Plus, Receipt, Trash2 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -48,24 +36,40 @@ export default function PurchaseOrdersListLive() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        setLoading(true);
-        // Use the professional database-level join
-        const { data, error } = await supabase
+        // 1. Fetch Purchase Orders without the relation
+        const { data: poData, error: poError } = await supabase
           .from("purchase_orders")
-          .select(`
-            id, 
-            po_number, 
-            farmer_id, 
-            status, 
-            order_date, 
-            total, 
-            currency, 
-            farmer:farmers(full_name)
-          `)
+          .select("id, po_number, farmer_id, status, order_date, total, currency")
           .order("order_date", { ascending: false });
 
-        if (error) throw error;
-        setOrders(data as any);
+        if (poError) throw poError;
+
+        // 2. Extract unique farmer_ids
+        const farmerIds = Array.from(new Set((poData || []).map(po => po.farmer_id).filter(Boolean)));
+
+        let farmersMap: Record<string, string> = {};
+        
+        // 3. Fetch Farmers if we have any
+        if (farmerIds.length > 0) {
+          const { data: farmersData, error: farmersError } = await supabase
+            .from("farmers")
+            .select("id, full_name")
+            .in("id", farmerIds);
+            
+          if (!farmersError && farmersData) {
+            farmersData.forEach(f => {
+              farmersMap[f.id] = f.full_name;
+            });
+          }
+        }
+
+        // 4. Stitch them together
+        const mappedOrders = (poData || []).map(po => ({
+          ...po,
+          farmers: { full_name: farmersMap[po.farmer_id] || "Unknown Supplier" }
+        }));
+
+        setOrders(mappedOrders as unknown as PurchaseOrder[]);
       } catch (err: any) {
         toast.error(err.message || "Failed to fetch purchase orders");
         console.error("Fetch error:", err);
@@ -76,6 +80,19 @@ export default function PurchaseOrdersListLive() {
 
     fetchOrders();
   }, []);
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete this purchase order? This cannot be undone.")) return;
+    try {
+      const { error } = await supabase.from("purchase_orders").delete().eq("id", id);
+      if (error) throw error;
+      setOrders(orders.filter(o => o.id !== id));
+      toast.success("Purchase order deleted");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete");
+    }
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -104,14 +121,14 @@ export default function PurchaseOrdersListLive() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12">
+                <TableCell colSpan={5} className="text-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
                   <p className="mt-2 text-sm text-muted-foreground">Loading orders...</p>
                 </TableCell>
               </TableRow>
             ) : orders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12">
+                <TableCell colSpan={5} className="text-center py-12">
                   <Receipt className="h-12 w-12 mx-auto text-muted-foreground opacity-50 mb-3" />
                   <p className="text-muted-foreground">No purchase orders found.</p>
                   <Button variant="link" onClick={() => navigate("/procurement/orders/create")}>
@@ -121,72 +138,27 @@ export default function PurchaseOrdersListLive() {
               </TableRow>
             ) : (
               orders.map((po) => (
-                <TableRow key={po.id} className="hover:bg-white/[0.02] cursor-pointer" onClick={() => navigate(`/procurement/orders/${po.id}`)}>
-                  <TableCell className="font-medium text-primary hover:underline">{po.po_number}</TableCell>
-                  <TableCell>{po.farmer?.full_name || "Unknown Supplier"}</TableCell>
+                <TableRow key={po.id}>
+                  <TableCell className="font-medium text-primary">{po.po_number}</TableCell>
+                  <TableCell>{po.farmers?.full_name || "Unknown Supplier"}</TableCell>
                   <TableCell>{format(new Date(po.order_date), "MMM d, yyyy")}</TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Select 
-                      defaultValue={po.status} 
-                      onValueChange={async (newStatus) => {
-                        const { error } = await supabase.from('purchase_orders').update({ status: newStatus }).eq('id', po.id);
-                        if (error) toast.error("Failed to update status");
-                        else {
-                          toast.success("Status updated");
-                          setOrders(orders.map(o => o.id === po.id ? { ...o, status: newStatus } : o));
-                        }
-                      }}
-                    >
-                      <SelectTrigger className={`w-32 h-8 text-xs font-bold uppercase ${STATUS_COLORS[po.status] || "bg-gray-500"}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="approved">Approved</SelectItem>
-                        <SelectItem value="received">Received</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <TableCell>
+                    <Badge className={`capitalize ${STATUS_COLORS[po.status] || "bg-gray-500"}`}>
+                      {po.status}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {po.currency} {Number(po.total)?.toLocaleString()}
                   </TableCell>
-                  <TableCell className="text-right flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/procurement/orders/${po.id}`)}>
-                      Details
+                  <TableCell className="text-right">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={(e) => handleDelete(e, po.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
-                    
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-card border-white/10">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This will permanently delete Purchase Order {po.po_number} and all its linked items. This action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel className="bg-white/5 border-white/10">Cancel</AlertDialogCancel>
-                          <AlertDialogAction 
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={async () => {
-                              const { error } = await supabase.from('purchase_orders').delete().eq('id', po.id);
-                              if (error) toast.error("Failed to delete order");
-                              else {
-                                toast.success("Order deleted successfully");
-                                setOrders(orders.filter(o => o.id !== po.id));
-                              }
-                            }}
-                          >
-                            Delete Order
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
                   </TableCell>
                 </TableRow>
               ))

@@ -83,8 +83,9 @@ export default function Settings() {
 
       setSignatureUrl(publicUrl);
       toast.success("Signature uploaded successfully!");
-    } catch (err: any) {
-      toast.error("Upload failed: " + err.message);
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error("Upload failed: " + error.message);
     } finally {
       setUploading(false);
     }
@@ -95,7 +96,22 @@ export default function Settings() {
     setSaving(true);
     
     // Update company table in Supabase
-    const updateData: any = {
+    interface CompanyUpdateData {
+      name: string;
+      base_currency: string;
+      signature_url: string;
+      invoice_prefix: string;
+      quotation_prefix: string;
+      order_prefix: string;
+      shipment_prefix: string;
+      smtp_host: string;
+      smtp_port: string;
+      smtp_user: string;
+      from_email: string;
+      smtp_pass?: string;
+    }
+
+    const updateData: CompanyUpdateData = {
       name,
       base_currency: currency.toUpperCase(),
       signature_url: signatureUrl,

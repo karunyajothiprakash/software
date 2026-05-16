@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Plus, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 type Supplier = {
   id: string;
@@ -24,6 +25,7 @@ type Supplier = {
 
 export default function SuppliersList() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -41,12 +43,20 @@ export default function SuppliersList() {
   const fetchSuppliers = async () => {
     try {
       const { data, error } = await supabase
-        .from("suppliers")
+        .from("farmers")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setSuppliers(data as Supplier[]);
+      const mapped = (data || []).map(f => ({
+        ...f,
+        name: f.full_name,
+        contact_name: "-", // Farmers don't have a separate contact_name
+        rating: 4,
+        status: f.is_active ? 'active' : 'inactive',
+        product_categories: f.primary_crops || []
+      }));
+      setSuppliers(mapped as any[]);
     } catch (err: any) {
       toast.error(err.message || "Failed to fetch suppliers");
     } finally {
@@ -61,21 +71,21 @@ export default function SuppliersList() {
   const handleAddSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return toast.error("Supplier name is required");
+    if (!profile?.company_id) return toast.error("Authentication error. Please refresh.");
 
     setSubmitting(true);
     try {
       const prodCategories = categories.split(",").map(c => c.trim()).filter(Boolean);
 
-      const { error } = await supabase.from("suppliers").insert({
-        name,
-        contact_name: contactName,
+      const { error } = await supabase.from("farmers").insert({
+        company_id: profile.company_id,
+        full_name: name,
         email,
         phone,
         country,
-        city,
-        product_categories: prodCategories,
-        rating: 0,
-        status: "active"
+        district: city, // Map city to district
+        primary_crops: prodCategories,
+        is_active: true
       });
 
       if (error) throw error;
@@ -98,11 +108,11 @@ export default function SuppliersList() {
   };
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation(); // Prevent navigating to detail
+    e.stopPropagation(); 
     if (!confirm("Delete this supplier?")) return;
 
     try {
-      const { error } = await supabase.from("suppliers").delete().eq("id", id);
+      const { error } = await supabase.from("farmers").delete().eq("id", id);
       if (error) throw error;
       toast.success("Supplier deleted");
       setSuppliers(suppliers.filter(s => s.id !== id));

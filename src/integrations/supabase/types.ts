@@ -937,7 +937,243 @@ export type Database = {
         ]
       }
     }
-    Views: {
+      quotations: {
+        Row: {
+          id: string
+          company_id: string
+          customer_id: string | null
+          quotation_number: string
+          amount: number
+          subtotal: number
+          tax_rate: number
+          tax_amount: number
+          currency: string
+          status: string
+          valid_until: string | null
+          incoterm: string | null
+          container_type: string | null
+          packaging_type: string | null
+          packaging_cost: number
+          shipment_type: string | null
+          shipping_cost: number
+          payment_terms: string | null
+          items_count: number
+          lead_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          customer_id?: string | null
+          quotation_number: string
+          amount: number
+          subtotal?: number
+          tax_rate?: number
+          tax_amount?: number
+          currency?: string
+          status?: string
+          valid_until?: string | null
+          incoterm?: string | null
+          container_type?: string | null
+          packaging_type?: string | null
+          packaging_cost?: number
+          shipment_type?: string | null
+          shipping_cost?: number
+          payment_terms?: string | null
+          items_count?: number
+          lead_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          customer_id?: string | null
+          quotation_number?: string
+          amount?: number
+          subtotal?: number
+          tax_rate?: number
+          tax_amount?: number
+          currency?: string
+          status?: string
+          valid_until?: string | null
+          incoterm?: string | null
+          container_type?: string | null
+          packaging_type?: string | null
+          packaging_cost?: number
+          shipment_type?: string | null
+          shipping_cost?: number
+          payment_terms?: string | null
+          items_count?: number
+          lead_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      quotation_items: {
+        Row: {
+          id: string
+          quotation_id: string
+          product_id: string | null
+          description: string | null
+          hsn_code: string | null
+          quantity: number
+          unit_price: number
+          total_price: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          quotation_id: string
+          product_id?: string | null
+          description?: string | null
+          hsn_code?: string | null
+          quantity: number
+          unit_price: number
+          total_price?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          quotation_id?: string
+          product_id?: string | null
+          description?: string | null
+          hsn_code?: string | null
+          quantity?: number
+          unit_price?: number
+          total_price?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      customers: {
+        Row: {
+          id: string
+          company_id: string
+          name: string
+          email: string | null
+          phone: string | null
+          address: string | null
+          country: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          name: string
+          email?: string | null
+          phone?: string | null
+          address?: string | null
+          country?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          name?: string
+          email?: string | null
+          phone?: string | null
+          address?: string | null
+          country?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      leads: {
+        Row: {
+          id: string
+          company_id: string
+          company_name: string | null
+          contact_name: string | null
+          email: string | null
+          phone: string | null
+          interested_product: string | null
+          status: string | null
+          stage: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          company_name?: string | null
+          contact_name?: string | null
+          email?: string | null
+          phone?: string | null
+          interested_product?: string | null
+          status?: string | null
+          stage?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          company_name?: string | null
+          contact_name?: string | null
+          email?: string | null
+          phone?: string | null
+          interested_product?: string | null
+          status?: string | null
+          stage?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      export_orders: {
+        Row: {
+          id: string
+          company_id: string
+          customer_id: string | null
+          order_number: string
+          total_amount: number
+          currency: string
+          status: string
+          payment_terms: string | null
+          payment_status: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          customer_id?: string | null
+          order_number: string
+          total_amount: number
+          currency?: string
+          status?: string
+          payment_terms?: string | null
+          payment_status?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          customer_id?: string | null
+          order_number?: string
+          total_amount?: number
+          currency?: string
+          status?: string
+          payment_terms?: string | null
+          payment_status?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }    Views: {
       tenants: {
         Row: {
           base_currency: string | null

@@ -18,6 +18,7 @@ type ExportShipment = {
   destination_port: string;
   eta: string;
   status: string;
+  containerCount?: number;
 };
 
 export default function ShipmentsList() {
@@ -44,7 +45,7 @@ export default function ShipmentsList() {
           containerCount: s.export_containers?.[0]?.count || 0
         })) || [];
         
-        setShipments(formatted as any);
+        setShipments(formatted as ExportShipment[]);
       } catch (err) {
         toast.error("Failed to load shipments");
       } finally {
@@ -52,7 +53,7 @@ export default function ShipmentsList() {
       }
     };
     fetchShipments();
-  }, []);
+  }, [profile?.company_id]);
 
   return (
     <div>
@@ -83,7 +84,7 @@ export default function ShipmentsList() {
             { key: "customer_name", header: "Customer", render: (r) => <span className="font-medium">{r.customer_name || "Unknown"}</span> },
             { key: "route", header: "Route", render: (r) => <span className="text-xs">{r.origin_port} → {r.destination_port}</span> },
             { key: "carrier", header: "Carrier", render: (r) => r.carrier },
-            { key: "containers", header: "Containers", render: (r) => <span className="tabular-nums">{(r as any).containerCount}</span> },
+            { key: "containers", header: "Containers", render: (r) => <span className="tabular-nums">{r.containerCount}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
             { key: "eta", header: "ETA", render: (r) => <span className="text-xs text-muted-foreground">{r.eta ? new Date(r.eta).toLocaleDateString() : 'TBD'}</span> },
           ]}

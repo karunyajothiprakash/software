@@ -1,26 +1,47 @@
 import { useNavigate } from "react-router-dom";
-import { Plus, Download, Loader2, FileText, Printer, Trash2 } from "lucide-react";
+import { Plus, Download, Loader2, FileText, Printer, Trash2, Bell } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { exportQuotationsToPDF } from "@/lib/quotation-export";
 import { toast } from "sonner";
 import { useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+
+interface QuotationItem {
+  id: string;
+  product?: {
+    name: string;
+    sku: string;
+    unit: string;
+  };
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  hsn_code: string;
+}
+
+interface Quotation {
+  id: string;
+  quotation_number: string;
+  amount: number;
+  currency: string;
+  status: string;
+  valid_until?: string;
+  created_at: string;
+  customer?: {
+    name: string;
+    address?: string;
+  };
+  customer_name?: string;
+  items_count?: number;
+  items?: QuotationItem[];
+  validUntil?: string;
+  createdAt?: string;
+}
 
 export default function QuotationsList() {
   const nav = useNavigate();
@@ -29,7 +50,7 @@ export default function QuotationsList() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const { data: quotations = [], isLoading } = useQuery({
+  const { data: quotations = [], isLoading } = useQuery<Quotation[]>({
     queryKey: ['quotations', profile?.company_id],
     queryFn: async () => {
       if (!profile?.company_id) return [];
@@ -40,18 +61,11 @@ export default function QuotationsList() {
           quotation_number,
           amount,
           currency,
-          status,
-          items_count,
-          valid_until,
-          created_at,
+          *,
           customer:customers(name, address),
-          quotation_items (
+          items:quotation_items(
             *,
-            products (
-              name,
-              unit,
-              hs_code
-            )
+            product:products(name, sku, unit)
           )
         `)
         .eq('company_id', profile.company_id)
@@ -59,12 +73,13 @@ export default function QuotationsList() {
 
       if (error) throw error;
 
-      return data.map((q: any) => ({
+      return (data || []).map((q: any) => ({
         ...q,
         id: q.id,
         quotation_number: q.quotation_number,
         customer_name: q.customer?.name || 'Unknown',
-        items: q.items_count || 0,
+        items_count: q.items?.length || 0,
+        items: q.items || [],
         amount: q.amount,
         currency: q.currency,
         status: q.status,
@@ -75,33 +90,24 @@ export default function QuotationsList() {
     enabled: !!profile?.company_id
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('quotations')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['quotations'] });
-      toast.success("Quotation deleted successfully");
-    },
-    onError: (error: any) => {
-      console.error("Delete error:", error);
-      toast.error(error.message || "Failed to delete quotation");
+  const handleRowDownload = async (e: React.MouseEvent, quotation: Quotation) => {
+    e.stopPropagation();
+    setDownloadingId(quotation.id);
+    
+    try {
+      const formatted = {
+        ...quotation,
+        customer_name: quotation.customer?.name || "Unknown"
+      };
+
+      exportQuotationsToPDF([formatted], false);
+      toast.success(`Quotation ${quotation.quotation_number} downloaded`);
+    } catch (err) {
+      console.error("Error downloading quotation:", err);
+      toast.error("Failed to download quotation");
+    } finally {
+      setDownloadingId(null);
     }
-  });
-
-  const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    deleteMutation.mutate(id);
-  };
-
-  const handleRowDownload = async (e: React.MouseEvent, quotation: any) => {
-    e.stopPropagation();
-    // Navigate to report with download=true to trigger auto-save
-    nav(`/quotations/${quotation.id}/report?download=true`);
   };
 
   const handleExport = () => {
@@ -111,7 +117,7 @@ export default function QuotationsList() {
     }
     
     try {
-      const formattedData = quotations.map((q: any) => ({
+      const formattedData = quotations.map((q: Quotation) => ({
         ...q,
         customer_name: q.customer?.name || "Unknown"
       }));
@@ -123,6 +129,22 @@ export default function QuotationsList() {
     }
   };
 
+  const handleDelete = async (e: React.MouseEvent, quotation: Quotation) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete quotation ${quotation.quotation_number}? This cannot be undone.`)) return;
+    setDeletingId(quotation.id);
+    try {
+      const { error } = await supabase.from('quotations').delete().eq('id', quotation.id);
+      if (error) throw error;
+      toast.success(`Quotation ${quotation.quotation_number} deleted`);
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete quotation");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div>
       <PageHeader 
@@ -131,6 +153,9 @@ export default function QuotationsList() {
         breadcrumbs={[{ label: "Quotations" }]}
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => nav("/quotations/approvals")}>
+              <Bell className="h-4 w-4 mr-1.5" />Approvals
+            </Button>
             <Button variant="outline" size="sm" onClick={handleExport} disabled={isLoading}>
               <Download className="h-4 w-4 mr-1.5" />Export
             </Button>
@@ -158,7 +183,7 @@ export default function QuotationsList() {
             ) 
           },
           { key: "customer_name", header: "Customer", render: (r) => <span className="font-medium">{r.customer_name}</span> },
-          { key: "items", header: "Items", render: (r) => <span className="tabular-nums">{r.items}</span> },
+          { key: "items_count", header: "Items", render: (r) => <span className="tabular-nums">{r.items_count}</span> },
           { key: "amount", header: "Total Amount", render: (r) => <span className="font-medium tabular-nums">{r.currency} {Number(r.amount).toLocaleString()}</span> },
           { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
           { key: "validUntil", header: "Valid Until", render: (r) => <span className="text-xs text-muted-foreground">{r.validUntil}</span> },
@@ -185,42 +210,29 @@ export default function QuotationsList() {
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-primary"
                   onClick={(e) => handleRowDownload(e, r)}
+                  disabled={downloadingId === r.id}
                   title="Download PDF"
                 >
-                  <Download className="h-4 w-4" />
+                  {downloadingId === r.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
                 </Button>
-
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => e.stopPropagation()}
-                      title="Delete Quotation"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the quotation
-                        and all its items.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction 
-                        onClick={(e) => handleDelete(e, r.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => handleDelete(e, r)}
+                  disabled={deletingId === r.id}
+                  title="Delete Quotation"
+                >
+                  {deletingId === r.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
             )
           },

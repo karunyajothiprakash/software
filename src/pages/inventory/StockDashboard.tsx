@@ -46,7 +46,7 @@ export default function StockDashboard() {
     }
   });
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<any[]>({
     queryKey: ["inventory_batches"],
     queryFn: async () => {
       try {
@@ -67,7 +67,7 @@ export default function StockDashboard() {
           .order("received_date", { ascending: false });
           
         if (error) throw error;
-        return data as any[];
+        return data || [];
       } catch (err) {
         console.error("Inventory fetch error:", err);
         throw err;
@@ -112,8 +112,9 @@ export default function StockDashboard() {
       // Reset form
       setQuantity("");
       setLotNumber(`LOT-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to add batch");
+    } catch (err: unknown) {
+      const error = err as Error;
+      toast.error(error.message || "Failed to add batch");
     } finally {
       setIsSubmitting(false);
     }

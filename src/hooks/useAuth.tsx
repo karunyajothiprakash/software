@@ -68,14 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let presenceChannel: ReturnType<typeof supabase.channel> | null = null;
 
     const subscribeRealtime = (uid: string) => {
-      // Unsubscribe from any previous channels
-      profileSub?.unsubscribe();
-      rolesSub?.unsubscribe();
-      presenceChannel?.unsubscribe();
+      // Clean up previous channels using removeChannel to bypass the internal cache
+      if (profileSub) supabase.removeChannel(profileSub);
+      if (rolesSub) supabase.removeChannel(rolesSub);
+      if (presenceChannel) supabase.removeChannel(presenceChannel);
+
+      const rand = Math.random().toString(36).substring(7);
 
       // Listen to changes on this user's profile row
       profileSub = supabase
-        .channel(`profile-${uid}`)
+        .channel(`profile-${uid}-${rand}`)
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "profiles", filter: `id=eq.${uid}` },
@@ -85,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Listen to changes on this user's roles
       rolesSub = supabase
-        .channel(`user-roles-${uid}`)
+        .channel(`user-roles-${uid}-${rand}`)
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "user_roles", filter: `user_id=eq.${uid}` },
@@ -94,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .subscribe();
 
       // Realtime Presence for Online Status
-      presenceChannel = supabase.channel('online-users', {
+      presenceChannel = supabase.channel(`online-users-${rand}`, {
         config: { presence: { key: uid } }
       });
       
@@ -118,9 +120,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         subscribeRealtime(sess.user.id);
       } else {
         userId = null;
-        profileSub?.unsubscribe();
-        rolesSub?.unsubscribe();
-        presenceChannel?.unsubscribe();
+        if (profileSub) supabase.removeChannel(profileSub);
+        if (rolesSub) supabase.removeChannel(rolesSub);
+        if (presenceChannel) supabase.removeChannel(presenceChannel);
         setProfile(null);
         setPermissions(new Set());
         setRoleSlugs(new Set());
@@ -141,9 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       subscription.unsubscribe();
-      profileSub?.unsubscribe();
-      rolesSub?.unsubscribe();
-      presenceChannel?.unsubscribe();
+      if (profileSub) supabase.removeChannel(profileSub);
+      if (rolesSub) supabase.removeChannel(rolesSub);
+      if (presenceChannel) supabase.removeChannel(presenceChannel);
     };
   }, []);
 

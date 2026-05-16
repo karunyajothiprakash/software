@@ -6,202 +6,332 @@ export const exportSingleQuotationToPDF = (quotation: any) => {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 10;
+  const contentWidth = pageWidth - (margin * 2);
 
-  // Draw Main Border
-  doc.setDrawColor(0);
-  doc.setLineWidth(0.5);
-  doc.rect(margin, margin, pageWidth - (margin * 2), pageHeight - (margin * 2));
+  // Colors & Styles
+  const primaryColor = [26, 82, 118]; // #1A5276
+  const totalBgColor = [189, 215, 238]; // #BDD7EE
+  const lightGray = [248, 250, 252]; // #f8fafc
 
-  // --- HEADER SECTION ---
-  const headerHeight = 55;
-  doc.line(margin, margin + headerHeight, pageWidth - margin, margin + headerHeight);
-  doc.line(pageWidth / 2 + 10, margin, pageWidth / 2 + 10, margin + headerHeight);
-
-  // Left Header - Company Info
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.setTextColor(41, 60, 108); // Professional blue
-  doc.text("SHASTIKA GLOBAL IMPEX PRIVATE LIMITED", margin + 35, margin + 10);
-
-  // Logo placeholder (simulating the "AG" logo with text if no image)
-  doc.setDrawColor(41, 60, 108);
-  doc.setLineWidth(1);
-  doc.rect(margin + 5, margin + 15, 25, 15);
-  doc.setFontSize(12);
-  doc.text("SGI", margin + 11, margin + 25);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(0);
-  doc.text("Address: 41/1,5T-5, Sathy Athani Main Road,", margin + 35, margin + 18);
-  doc.text("Thuckanayakanpalayam", margin + 35, margin + 23);
-  doc.text("Erode - 638506, Tamil Nadu, India.", margin + 35, margin + 28);
-  doc.text(`Phone no : 7397612015`, margin + 35, margin + 38);
-  doc.setFont("helvetica", "bold");
-  doc.text("GSTIN : 33ABPCS0605LJZ8", margin + 35, margin + 45);
-
-  // Right Header - Invoice Details
-  doc.setFontSize(14);
-  doc.setTextColor(41, 60, 108);
-  doc.text("PROFORMA INVOICE", pageWidth / 2 + 25, margin + 12);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(0);
-  doc.text(`PI NO : ${quotation.quotation_number || "N/A"}`, pageWidth / 2 + 20, margin + 25);
-  doc.text(`DATE : ${format(new Date(quotation.created_at || new Date()), "dd-MM-yyyy")}`, pageWidth / 2 + 20, margin + 35);
-  doc.text(`VALID PI DATE : ${quotation.valid_until || "N/A"}`, pageWidth / 2 + 20, margin + 45);
-
-  // --- TERMS & PACKING SECTION ---
-  const termsHeight = 70;
-  const currentY = margin + headerHeight;
-  doc.line(margin, currentY + 8, pageWidth - margin, currentY + 8); // Header line
-  doc.line(margin + 60, currentY, margin + 60, currentY + termsHeight); // Vertical line 1
-  doc.line(margin + 120, currentY, margin + 120, currentY + termsHeight); // Vertical line 2
-  doc.line(margin, currentY + termsHeight, pageWidth - margin, currentY + termsHeight); // Bottom line
-
-  // Column Headers
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text("BILL TO :", margin + 2, currentY + 5);
-  doc.text("SHIPMENT & TRADE TERMS", margin + 62, currentY + 5);
-  doc.text("PACKING DETAILS", margin + 122, currentY + 5);
-
-  // Bill To Content
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  const custName = quotation.customer_name || quotation.customers?.name || "Unknown";
-  doc.text(custName, margin + 2, currentY + 15);
-  const custAddress = quotation.customers?.address || "";
-  const splitAddress = doc.splitTextToSize(custAddress, 55);
-  doc.text(splitAddress, margin + 2, currentY + 20);
-
-  // Shipment & Trade Terms Content
-  let shipY = currentY + 15;
-  const drawTerm = (label: string, value: string) => {
-    doc.setFont("helvetica", "normal");
-    doc.text(`${label} :`, margin + 62, shipY);
-    doc.setFont("helvetica", "bold");
-    doc.text(String(value || "---"), margin + 95, shipY);
-    shipY += 7;
+  const drawFields = (fields: { label: string, value: string }[], startX: number, startY: number, labelWidth: number) => {
+    let currentY = startY;
+    fields.forEach(f => {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(100);
+      doc.text(`${f.label}`, startX, currentY);
+      doc.text(":", startX + labelWidth - 3, currentY);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0);
+      doc.text(String(f.value || "---"), startX + labelWidth, currentY);
+      currentY += 6;
+    });
   };
-  drawTerm("Country of Origin", quotation.country_of_origin || "India");
-  drawTerm("Mode of Transport", quotation.mode_of_transport || "Sea");
-  drawTerm("Incoterms", quotation.incoterms || "FOB");
-  drawTerm("Port of Loading", quotation.port_of_loading || "CHENNAI PORT");
-  drawTerm("Port of Discharge", quotation.port_of_discharge || "---");
-  drawTerm("Est. shipment date", quotation.estimated_shipment_date || "---");
 
-  // Packing Details Content
-  doc.setFont("helvetica", "normal");
-  doc.text("Packing Type:", margin + 122, currentY + 15);
+  // Main Border
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.4);
+  doc.rect(margin, margin, contentWidth, pageHeight - (margin * 2));
+
+  // --- HEADER SECTION (50 height) ---
+  const headerHeight = 50;
+  const leftColWidth = contentWidth * 0.55;
+  const rightColWidth = contentWidth * 0.45;
+
+  // Header Split Line
+  doc.line(margin + leftColWidth, margin, margin + leftColWidth, margin + headerHeight);
+  doc.line(margin, margin + headerHeight, pageWidth - margin, margin + headerHeight);
+
+  // Left Header - Company Title & Details
   doc.setFont("helvetica", "bold");
-  doc.text(quotation.packing_type || "Standard", margin + 145, currentY + 15);
+  doc.setFontSize(10.5);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text("SHASTIKA GLOBAL IMPEX PRIVATE LIMITED", margin + leftColWidth / 2, margin + 7, { align: "center" });
+
+  try {
+    doc.addImage("/logo.webp", "WEBP", margin + 5, margin + 12, 20, 20);
+  } catch (e) {
+    doc.setFontSize(9);
+    doc.text("LOGO", margin + 10, margin + 22);
+  }
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(50);
+  const addrX = margin + 30;
+  let addrY = margin + 15;
+  doc.text("Address:", addrX, addrY);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  doc.text("41/1, ST-5, Sathy Athani Main Road,", addrX + 11, addrY);
+  addrY += 4.5;
+  doc.text("Thuckanayakanpalayam,", addrX + 11, addrY);
+  addrY += 4.5;
+  doc.text("Erode - 638506, Tamil Nadu, India.", addrX + 11, addrY);
+  
+  addrY += 6.5;
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(50);
+  doc.text("Phone no:", addrX, addrY);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  doc.text("7397612015", addrX + 11, addrY);
+
+  addrY += 4.5;
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(50);
+  doc.text("GSTIN:", addrX, addrY);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  doc.text("33ABPCS0605LIZ8", addrX + 11, addrY);
+
+  // Right Header - Quotation Title & Info
+  doc.setFontSize(11);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.setFont("helvetica", "bold");
+  doc.text("QUOTATION", margin + leftColWidth + rightColWidth / 2, margin + 10, { align: "center" });
+
+  const quoteInfo = [
+    { label: "Quotation No", value: quotation.quotation_number },
+    { label: "Date", value: format(new Date(quotation.created_at || new Date()), "dd/MM/yyyy") },
+    { label: "Valid Until", value: quotation.valid_until ? format(new Date(quotation.valid_until), "dd/MM/yyyy") : "TBD" },
+    { label: "Currency", value: quotation.currency || "INR" },
+    { label: "Incoterm", value: quotation.incoterms || quotation.incoterm || "EXW" }
+  ];
+  drawFields(quoteInfo, margin + leftColWidth + 12, margin + 18, 25);
+
+  // --- GRID ROW 1 (3 cols, 35 height) ---
+  let currentY = margin + headerHeight;
+  const row1Height = 35;
+  const r1Col1W = contentWidth * 0.40;
+  const r1Col2W = contentWidth * 0.35;
+  const r1Col3W = contentWidth * 0.25;
+
+  // Row 1 background for headers
+  doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+  doc.rect(margin, currentY, contentWidth, 7, 'F');
+  doc.setDrawColor(0);
+  doc.line(margin, currentY + 7, pageWidth - margin, currentY + 7);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text("BILL TO :", margin + r1Col1W / 2, currentY + 5, { align: "center" });
+  doc.text("TERMS OF PAYMENT", margin + r1Col1W + r1Col2W / 2, currentY + 5, { align: "center" });
+  doc.text("PACKING DETAILS", margin + r1Col1W + r1Col2W + r1Col3W / 2, currentY + 5, { align: "center" });
+
+  // Row 1 divider lines
+  doc.line(margin + r1Col1W, currentY, margin + r1Col1W, currentY + row1Height);
+  doc.line(margin + r1Col1W + r1Col2W, currentY, margin + r1Col1W + r1Col2W, currentY + row1Height);
+  doc.line(margin, currentY + row1Height, pageWidth - margin, currentY + row1Height);
+
+  doc.setTextColor(0);
+  // Col 1: Bill To
+  const custName = quotation.customer_name || quotation.customer?.name || "Unknown";
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text(custName.toUpperCase(), margin + 4, currentY + 13);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  const custAddress = quotation.customer?.address || "";
+  const splitAddress = doc.splitTextToSize(custAddress, r1Col1W - 8);
+  doc.text(splitAddress, margin + 4, currentY + 18);
+
+  // Col 2: Terms of Payment
+  const termsText = quotation.payment_terms || "Standard payment terms apply.";
+  const splitTermsText = doc.splitTextToSize(termsText, r1Col2W - 8);
+  doc.text(splitTermsText, margin + r1Col1W + 4, currentY + 13);
+
+  // Col 3: Packing Details
+  const pkgFields = [
+    { label: "Packing Method", value: quotation.packaging_type || "Bag" },
+    { label: "Packing Charge", value: `${quotation.currency || "INR"} ${Number(quotation.packaging_cost || 0).toFixed(2)}` }
+  ];
+  drawFields(pkgFields, margin + r1Col1W + r1Col2W + 4, currentY + 13, 22);
+
+  // --- GRID ROW 2 (2 cols, 40 height) ---
+  currentY += row1Height;
+  const row2Height = 40;
+  const r2Col1W = contentWidth * 0.55;
+  const r2Col2W = contentWidth * 0.45;
+
+  // Row 2 background for headers
+  doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+  doc.rect(margin, currentY, contentWidth, 7, 'F');
+  doc.line(margin, currentY + 7, pageWidth - margin, currentY + 7);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text("SHIPMENT & TRADE TERMS", margin + r2Col1W / 2, currentY + 5, { align: "center" });
+  doc.text("TRANSPORT DETAILS", margin + r2Col1W + r2Col2W / 2, currentY + 5, { align: "center" });
+
+  // Row 2 divider lines
+  doc.line(margin + r2Col1W, currentY, margin + r2Col1W, currentY + row2Height);
+  doc.line(margin, currentY + row2Height, pageWidth - margin, currentY + row2Height);
+
+  // Col 1: Shipment & Trade
+  const tradeFields = [
+    { label: "Country of Origin", value: "India" },
+    { label: "Mode of Transport", value: quotation.mode_of_transport || "Truck" },
+    { label: "Incoterms", value: quotation.incoterms || quotation.incoterm || "EXW" },
+    { label: "Port of Loading", value: quotation.port_of_loading || "Nhava Sheva Port, India" },
+    { label: "Port of Discharge", value: quotation.port_of_discharge || "---" }
+  ];
+  drawFields(tradeFields, margin + 4, currentY + 13, 30);
+
+  // Col 2: Transport Details
+  const transFields = [
+    { label: "Transport", value: quotation.shipment_type || "Truck" },
+    { label: "Transport Charges", value: `${quotation.currency || "INR"} ${Number(quotation.shipping_cost || 0).toLocaleString()}` }
+  ];
+  drawFields(transFields, margin + r2Col1W + 4, currentY + 13, 30);
 
   // --- ITEMS TABLE ---
-  const tableTop = currentY + termsHeight;
-  const colWidths = [12, 70, 25, 20, 15, 25, 23];
-  const colLabels = ["ID", "DESCRIPTION", "HSN", "QUANTITY", "UNIT", "PRICE", "AMOUNT"];
+  const tableTop = currentY + row2Height;
+  const tableHeight = 65; // Even more compact
 
-  // Table Header
-  doc.setFillColor(240, 240, 240);
-  doc.rect(margin, tableTop, pageWidth - (margin * 2), 10, 'F');
-  doc.setDrawColor(0);
-  doc.line(margin, tableTop + 10, pageWidth - margin, tableTop + 10);
+
+  const colWidths = [10, 65, 25, 25, 15, 25, 25]; // Adds up to 190
+  const curr = quotation.currency || "USD";
+  const colLabels = ["ID", "DESCRIPTION", "HSN", "QUANTITY", "UNIT", `UNIT PRICE (${curr})`, `AMOUNT (${curr})` ];
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(7);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.setFillColor(lightGray[0], lightGray[1], lightGray[2]);
+  doc.rect(margin, tableTop, contentWidth, 8, 'F');
+  doc.line(margin, tableTop + 8, pageWidth - margin, tableTop + 8);
+
   let colX = margin;
   colLabels.forEach((label, i) => {
-    const align = (i >= 3) ? "right" : "left";
-    const xPos = align === "right" ? colX + colWidths[i] - 2 : colX + 2;
-    doc.text(label, xPos, tableTop + 7, { align });
+    const align = (i >= 3) ? "center" : (i === 1 ? "left" : "center");
+    const xPos = align === "center" ? colX + colWidths[i]/2 : colX + 4;
+    doc.setFontSize(i > 4 ? 6 : 7); // Smaller font for price/amount headers
+    doc.text(label, xPos, tableTop + 5.5, { align });
     colX += colWidths[i];
-    if (i < colLabels.length - 1) doc.line(colX, tableTop, colX, tableTop + 100); // Draw vertical lines
+    if (i < colLabels.length - 1) doc.line(colX, tableTop, colX, tableTop + tableHeight);
   });
 
-  // Table Body
   doc.setFont("helvetica", "normal");
-  let itemY = tableTop + 15;
-  const items = quotation.quotation_items || [];
-
+  doc.setTextColor(0);
+  doc.setFontSize(7.5);
+  let itemY = tableTop + 14;
+  const items = quotation.quotation_items || quotation.items || [];
   items.forEach((item: any, idx: number) => {
     colX = margin;
-    doc.text(String(idx + 1), colX + 2, itemY); colX += colWidths[0];
-    doc.text(item.products?.name || "Product", colX + 2, itemY); colX += colWidths[1];
-    doc.text(item.products?.hs_code || "N/A", colX + 2, itemY); colX += colWidths[2];
-    doc.text(String(item.quantity), colX + colWidths[3] - 2, itemY, { align: "right" }); colX += colWidths[3];
-    doc.text(item.products?.unit || "PCS", colX + 2, itemY); colX += colWidths[4];
-    doc.text(Number(item.unit_price).toLocaleString(), colX + colWidths[5] - 2, itemY, { align: "right" }); colX += colWidths[5];
-    doc.text(Number(item.total_price || (item.quantity * item.unit_price)).toLocaleString(), colX + colWidths[6] - 2, itemY, { align: "right" });
-
-    itemY += 8;
+    doc.text(String(idx + 1), colX + colWidths[0]/2, itemY, { align: "center" }); colX += colWidths[0];
+    
+    const itemName = item.description || item.products?.name || item.product?.name || item.product_name || "Product";
+    const splitName = doc.splitTextToSize(itemName, colWidths[1] - 8);
+    doc.text(splitName, colX + 4, itemY); colX += colWidths[1];
+    
+    doc.text(item.hsn_code || item.products?.hs_code || item.product?.hs_code || item.hs_code || "---", colX + colWidths[2]/2, itemY, { align: "center" }); colX += colWidths[2];
+    doc.text(String(item.quantity), colX + colWidths[3]/2, itemY, { align: "center" }); colX += colWidths[3];
+    doc.text(String(item.unit || item.products?.unit || item.product?.unit || "PCS").toUpperCase(), colX + colWidths[4]/2, itemY, { align: "center" }); colX += colWidths[4];
+    doc.text(Number(item.unit_price).toFixed(2), colX + colWidths[5] - 4, itemY, { align: "right" }); colX += colWidths[5];
+    doc.text(Number(item.total_price || (item.quantity * item.unit_price)).toFixed(2), colX + colWidths[6] - 4, itemY, { align: "right" });
+    itemY += Math.max(8, splitName.length * 4);
   });
 
-  // Draw table bottom border
-  doc.line(margin, tableTop + 100, pageWidth - margin, tableTop + 100);
+  doc.line(margin, tableTop + tableHeight, pageWidth - margin, tableTop + tableHeight);
 
-  // --- FOOTER SECTION ---
-  const footerTop = tableTop + 100;
-  doc.line(pageWidth - 80, footerTop, pageWidth - 80, footerTop + 40); // Summary vertical line
-  doc.line(margin, footerTop + 40, pageWidth - margin, footerTop + 40); // Bottom of summary line
+  // --- FOOTER SECTION (Summary & Terms) ---
+  const footerTop = tableTop + tableHeight;
+  const footerHeight = 40;
+  const footerLeftW = contentWidth * 0.55;
+  const footerRightW = contentWidth * 0.45;
 
-  // Summary (Right)
-  let summaryY = footerTop + 7;
-  const drawSummaryRow = (label: string, value: string, bold = false) => {
-    doc.setFont("helvetica", bold ? "bold" : "normal");
-    doc.text(label, pageWidth - 78, summaryY);
-    doc.text(value, pageWidth - 12, summaryY, { align: "right" });
-    doc.line(pageWidth - 80, summaryY + 3, pageWidth - margin, summaryY + 3);
-    summaryY += 10;
+  doc.line(margin + footerLeftW, footerTop, margin + footerLeftW, footerTop + footerHeight);
+
+  // Footer Left: Note & Declaration
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+  doc.text("NOTE", margin + 4, footerTop + 5);
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(50);
+  const notes = quotation.notes || "Including packing, loading and Transport.";
+  const splitNotes = doc.splitTextToSize(notes, footerLeftW - 8);
+  doc.text(splitNotes, margin + 4, footerTop + 10);
+
+  doc.line(margin, footerTop + 24, margin + footerLeftW, footerTop + 24);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.5);
+  doc.setTextColor(0);
+  doc.text("DECLARATION", margin + 4, footerTop + 29);
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(6);
+  doc.text("We hereby certify that the goods mentioned above are of Indian origin and the price and details stated in this quotation are true and correct.", margin + 4, footerTop + 34, { maxWidth: footerLeftW - 8 });
+
+  // Footer Right: Summary
+  const total = Number(quotation.amount || quotation.total_amount || 0);
+  const taxRate = Number(quotation.tax_rate || 0);
+  const pkgCost = Number(quotation.packaging_cost || 0);
+  const shipCost = Number(quotation.shipping_cost || 0);
+  
+  const subtotal = Number(quotation.subtotal || (total / (1 + taxRate/100) - pkgCost - shipCost));
+  const taxableAmount = subtotal + pkgCost + shipCost;
+  const taxAmount = Number(quotation.tax_amount || (taxableAmount * taxRate / 100));
+
+  let sumY = footerTop + 6;
+  const drawSumRow = (label: string, value: string, isTotal = false) => {
+    if (isTotal) {
+      doc.setFillColor(totalBgColor[0], totalBgColor[1], totalBgColor[2]);
+      doc.rect(margin + footerLeftW + 0.2, sumY - 4.5, footerRightW - 0.4, 8, 'F');
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(50);
+    }
+    doc.text(label, margin + footerLeftW + 4, sumY);
+    doc.text(value, pageWidth - margin - 4, sumY, { align: "right" });
+    sumY += 6.5;
   };
 
-  const total = Number(quotation.total_amount || 0);
-  const subtotal = total / 1.18;
-  const tax = total - subtotal;
+  drawSumRow("SUB TOTAL", `${curr} ${subtotal.toLocaleString()}`);
+  drawSumRow("PACKING CHARGE", `${curr} ${pkgCost.toLocaleString()}`);
+  drawSumRow("TRANSPORT CHARGES", `${curr} ${shipCost.toLocaleString()}`);
+  drawSumRow("TAX", `${curr} ${taxAmount.toLocaleString()}`);
+  drawSumRow("TOTAL AMOUNT", `${curr} ${total.toLocaleString()}`, true);
 
-  drawSummaryRow("SUB TOTAL", subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  drawSummaryRow("Tax Rate", "18 %");
-  drawSummaryRow("Tax", tax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-
-  // Total Box
-  doc.setFillColor(41, 60, 108);
-  doc.rect(pageWidth - 80, summaryY - 7, 70, 10, 'F');
-  doc.setTextColor(255);
+  // --- SIGNATURE SECTION ---
+  const sigSectionTop = footerTop + footerHeight;
+  doc.line(margin, sigSectionTop, pageWidth - margin, sigSectionTop);
+  
   doc.setFont("helvetica", "bold");
-  doc.text("Total", pageWidth - 78, summaryY - 1);
-  doc.text(`${quotation.currency} ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, pageWidth - 12, summaryY - 1, { align: "right" });
-  doc.setTextColor(0);
-
-  // Terms & Declaration (Left)
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(41, 60, 108);
-  doc.text("Terms of Payment", margin + 2, footerTop + 5);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(0);
-  const splitTerms = doc.splitTextToSize(quotation.payment_terms || "", 110);
-  doc.text(splitTerms, margin + 2, footerTop + 12);
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Note: Including packing, loading and Transport.", margin + 2, footerTop + 35);
-
   doc.setFontSize(7);
-  doc.text(`Declaration : ${quotation.declaration || ""}`, margin + 2, footerTop + 48);
+  doc.setTextColor(0);
+  doc.text("FOR SHASTIKA GLOBAL IMPEX PRIVATE LIMITED", pageWidth - margin - 5, sigSectionTop + 6, { align: "right" });
 
-  // Final Signature Section
-  const signatureTop = footerTop + 55;
-  doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
-  doc.text("FOR SHASTIKA GLOBAL IMPEX PRIVATE LIMITED", pageWidth - margin - 5, signatureTop, { align: "right" });
-
+  doc.text("Authorized Signatory :", margin + footerLeftW + 4, sigSectionTop + 18);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text("Authorized Signatory :", pageWidth - margin - 40, signatureTop + 20);
-  doc.text("Seal & Sign :", pageWidth - margin - 40, signatureTop + 30);
+  doc.setTextColor(150);
+  doc.text("____________________________", margin + footerLeftW + 35, sigSectionTop + 18);
 
-  doc.save(`Quotation_${quotation.quotation_number}_${format(new Date(), "yyyyMMdd")}.pdf`);
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "bold");
+  doc.text("Seal & Sign :", margin + footerLeftW + 4, sigSectionTop + 30);
+  doc.rect(pageWidth - margin - 40, sigSectionTop + 24, 35, 12); // Stamp box shifted down and sized correctly
+
+
+  // Watermark
+  try {
+    doc.setGState(new (doc as any).GState({ opacity: 0.08 }));
+    doc.addImage("/logo.webp", "WEBP", pageWidth / 2 - 35, pageHeight / 2 - 35, 70, 70);
+    doc.setGState(new (doc as any).GState({ opacity: 1 }));
+  } catch (e) {}
+
+  doc.save(`Quotation_${quotation.quotation_number || 'Report'}.pdf`);
 };
+
+
 
 export const exportQuotationsToPDF = (quotations: any[], forceList = false) => {
   // If it's a single quotation and not forced to list, use the professional format
@@ -247,7 +377,7 @@ export const exportQuotationsToPDF = (quotations: any[], forceList = false) => {
     doc.text(String(q.customer_name || q.customers?.name || "Unknown"), 45, currentY);
     const count = q.items_count !== undefined ? q.items_count : (q.quotation_items?.length || 0);
     doc.text(String(count), 110, currentY);
-    doc.text(`${q.currency || "USD"} ${Number(q.total_amount || 0).toLocaleString()}`, 130, currentY);
+    doc.text(`${q.currency || "USD"} ${Number(q.amount || q.total_amount || 0).toLocaleString()}`, 130, currentY);
     doc.text(q.status || "Draft", 170, currentY);
     currentY += 10;
   });

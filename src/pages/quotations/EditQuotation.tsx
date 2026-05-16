@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Save, Trash2, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -10,16 +10,9 @@ import { Section, FormGrid, FormRow } from "@/components/shared/FormShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 
-type Item = { id: string; product_id: string; product_name: string; hsn_code: string; qty: number; price: number };
-
-interface Lead {
-  id: string;
-  company_name?: string;
-  contact_name?: string;
-  interested_product?: string;
-  email?: string;
-}
+type Item = { id: string; product_id: string; product_name: string; hsn_code: string; qty: number; price: number; db_id?: string };
 
 interface Product {
   id: string;
@@ -33,20 +26,17 @@ interface MetaData {
   name: string;
 }
 
-export default function CreateQuotation() {
+export default function EditQuotation() {
   const nav = useNavigate();
-  const location = useLocation();
+  const { id } = useParams();
   const { profile } = useAuth();
-  const leadFromState = location.state?.lead;
   const [saving, setSaving] = useState(false);
-  const [leadsList, setLeadsList] = useState<Lead[]>([]);
   const [productsList, setProductsList] = useState<Product[]>([]);
   const [containerTypesList, setContainerTypesList] = useState<MetaData[]>([]);
   const [packagingTypesList, setPackagingTypesList] = useState<MetaData[]>([]);
 
   // Form State
-  const [selectedLeadId, setSelectedLeadId] = useState(leadFromState?.id || "");
-  const [customerName, setCustomerName] = useState(leadFromState?.company_name || "");
+  const [customerName, setCustomerName] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [validUntil, setValidUntil] = useState("");
   const [incoterm, setIncoterm] = useState("CIF");
@@ -56,8 +46,15 @@ export default function CreateQuotation() {
   const [shipmentType, setShipmentType] = useState("");
   const [shipmentCost, setShipmentCost] = useState(0);
   const [taxRate, setTaxRate] = useState(0);
-  const [paymentTerms, setPaymentTerms] = useState("90 % of the invoice value to be paid in advance, and the remaining 10 % of the invoice value to be paid after the loading of goods.\n\nNote : Including packing, loading and Transport.");
-  
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [items, setItems] = useState<Item[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // New Packaging Type State
+  const [isPkgModalOpen, setIsPkgModalOpen] = useState(false);
+  const [newPkgName, setNewPkgName] = useState("");
+  const [savingPkg, setSavingPkg] = useState(false);
+
   const getCurrencySymbol = (curr: string) => {
     switch (curr) {
       case "USD": return "$";
@@ -66,34 +63,69 @@ export default function CreateQuotation() {
       default: return curr;
     }
   };
-  
-  const [items, setItems] = useState<Item[]>(
-    leadFromState?.interested_product 
-      ? [{ id: Date.now().toString(), product_id: "", product_name: leadFromState.interested_product, hsn_code: "", qty: 1, price: 0 }]
-      : [{ id: Date.now().toString(), product_id: "", product_name: "", hsn_code: "", qty: 1, price: 0 }]
-  );
 
-  // New Packaging Type State
-  const [isPkgModalOpen, setIsPkgModalOpen] = useState(false);
-  const [newPkgName, setNewPkgName] = useState("");
-  const [savingPkg, setSavingPkg] = useState(false);
+  // Load quotation data
+  const { data: quotation, isLoading: quotationLoading } = useQuery({
+    queryKey: ['quotation_edit', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('quotations')
+        .select(`
+          *,
+          customer:customers(name),
+          items:quotation_items(*)
+        `)
+        .eq('id', id!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadMeta = async () => {
       if (!profile?.company_id) return;
-      const [leadsRes, productsRes, containersRes, pkgsRes] = await Promise.all([
-        supabase.from('leads').select('*').eq('company_id', profile.company_id),
+      const [productsRes, containersRes, pkgsRes] = await Promise.all([
         supabase.from('products').select('*').eq('company_id', profile.company_id),
         supabase.from('container_types').select('name').order('name'),
-        supabase.from('packaging_types').select('name').order('name')
+        supabase.from('packaging_types').select('name').order('name'),
       ]);
-      if (leadsRes.data) setLeadsList(leadsRes.data);
       if (productsRes.data) setProductsList(productsRes.data);
       if (containersRes.data) setContainerTypesList(containersRes.data);
       if (pkgsRes.data) setPackagingTypesList(pkgsRes.data);
     };
-    loadData();
+    loadMeta();
   }, [profile?.company_id]);
+
+  // Populate form once quotation is loaded
+  useEffect(() => {
+    if (quotation && !dataLoaded) {
+      setCustomerName((quotation as any).customer?.name || "");
+      setCurrency((quotation as any).currency || "USD");
+      setValidUntil((quotation as any).valid_until ? (quotation as any).valid_until.split("T")[0] : "");
+      setIncoterm((quotation as any).incoterm || "CIF");
+      setContainerType((quotation as any).container_type || "");
+      setPackagingType((quotation as any).packaging_type || "");
+      setPackagingCost(Number((quotation as any).packaging_cost) || 0);
+      setShipmentType((quotation as any).shipment_type || "");
+      setShipmentCost(Number((quotation as any).shipping_cost) || 0);
+      setTaxRate(Number((quotation as any).tax_rate) || 0);
+      setPaymentTerms((quotation as any).payment_terms || "");
+
+      const loadedItems = ((quotation as any).items || []).map((item: any) => ({
+        id: Date.now().toString() + Math.random(),
+        db_id: item.id,
+        product_id: item.product_id || "",
+        product_name: item.description || "",
+        hsn_code: item.hsn_code || "",
+        qty: item.quantity,
+        price: item.unit_price,
+      }));
+      setItems(loadedItems.length > 0 ? loadedItems : [{ id: Date.now().toString(), product_id: "", product_name: "", hsn_code: "", qty: 1, price: 0 }]);
+      setDataLoaded(true);
+    }
+  }, [quotation, dataLoaded]);
 
   const loadPackagingTypes = async () => {
     const { data } = await supabase.from('packaging_types').select('name').order('name');
@@ -103,7 +135,6 @@ export default function CreateQuotation() {
   const handleAddPackaging = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPkgName) return toast.error("Packaging type name is required");
-    
     setSavingPkg(true);
     try {
       const { error } = await supabase.from("packaging_types").insert({ name: newPkgName });
@@ -113,25 +144,16 @@ export default function CreateQuotation() {
       setNewPkgName("");
       loadPackagingTypes();
     } catch (err: unknown) {
-      const error = err as Error;
-      toast.error(error.message || "Failed to add packaging type");
+      toast.error((err as Error).message || "Failed to add packaging type");
     } finally {
       setSavingPkg(false);
     }
   };
 
-  useEffect(() => {
-    if (!selectedLeadId) return;
-    const lead = leadsList.find(l => l.id === selectedLeadId);
-    if (lead) {
-      setCustomerName(lead.company_name || lead.contact_name);
-    }
-  }, [selectedLeadId, leadsList]);
-
   const addItem = () => setItems((s) => [...s, { id: Date.now().toString(), product_id: "", product_name: "", hsn_code: "", qty: 1, price: 0 }]);
-  const removeItem = (id: string) => setItems((s) => s.filter((i) => i.id !== id));
-  const updateItem = (id: string, patch: Partial<Item>) => setItems((s) => s.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-  
+  const removeItem = (itemId: string) => setItems((s) => s.filter((i) => i.id !== itemId));
+  const updateItem = (itemId: string, patch: Partial<Item>) => setItems((s) => s.map((i) => (i.id === itemId ? { ...i, ...patch } : i)));
+
   const subtotal = items.reduce((s, i) => s + (Number(i.qty) * Number(i.price)), 0);
   const taxableAmount = subtotal + Number(packagingCost) + Number(shipmentCost);
   const taxAmount = (taxableAmount * taxRate) / 100;
@@ -144,26 +166,10 @@ export default function CreateQuotation() {
 
     setSaving(true);
     try {
-      // 1. Create Customer record if needed
-      let customerId = null;
-      const { data: custData, error: custErr } = await supabase
-        .from('customers')
-        .insert({ company_id: profile!.company_id, name: customerName })
-        .select('id').single();
-      
-      if (!custErr && custData) customerId = custData.id;
-
-      // 2. Create Quotation
-      const year = new Date().getFullYear();
-      const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-      const quoteNumber = `QT-${year}-${rand}`;
-
-      const { data: quoteData, error: quoteErr } = await supabase
+      // 1. Update the quotation
+      const { error: quoteErr } = await supabase
         .from('quotations')
-        .insert({
-          company_id: profile!.company_id,
-          customer_id: customerId,
-          quotation_number: quoteNumber,
+        .update({
           amount: totalAmount,
           subtotal: subtotal,
           tax_rate: taxRate,
@@ -174,25 +180,32 @@ export default function CreateQuotation() {
           shipment_type: shipmentType || null,
           shipping_cost: Number(shipmentCost),
           currency,
-          status: 'Draft',
           items_count: items.length,
           valid_until: validUntil || null,
           payment_terms: paymentTerms,
-          lead_id: selectedLeadId || null
+          incoterm: incoterm || null,
         })
-        .select('id').single();
+        .eq('id', id!);
 
       if (quoteErr) throw quoteErr;
 
-      // 3. Create Quotation Items
+      // 2. Delete existing items and re-insert
+      const { error: deleteErr } = await supabase
+        .from('quotation_items')
+        .delete()
+        .eq('quotation_id', id!);
+
+      if (deleteErr) throw deleteErr;
+
+      // 3. Insert new items
       const insertItems = items.filter(i => i.product_name).map(i => ({
-        quotation_id: quoteData.id,
-        product_id: i.product_id || null, 
+        quotation_id: id!,
+        product_id: i.product_id || null,
         quantity: Number(i.qty),
         unit_price: Number(i.price),
         total_price: Number(i.qty) * Number(i.price),
         description: i.product_name,
-        hsn_code: i.hsn_code
+        hsn_code: i.hsn_code,
       }));
 
       if (insertItems.length > 0) {
@@ -200,29 +213,33 @@ export default function CreateQuotation() {
         if (itemsErr) throw itemsErr;
       }
 
-      if (selectedLeadId) {
-        await supabase.from("leads").update({ stage: "negotiation" }).eq("id", selectedLeadId);
-      }
-
-      toast.success("Quotation created successfully!");
-      nav("/quotations");
+      toast.success("Quotation updated successfully!");
+      nav(`/quotations/${id}`);
     } catch (err: unknown) {
       const error = err as Error;
       console.error(error);
-      toast.error(error.message || "Failed to create quotation");
+      toast.error(error.message || "Failed to update quotation");
     } finally {
       setSaving(false);
     }
   };
 
+  if (quotationLoading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+      </div>
+    );
+  }
+
   return (
     <div>
-      <PageHeader title="Create Quotation" breadcrumbs={[{ label: "Quotations", to: "/quotations" }, { label: "New" }]}
+      <PageHeader title="Edit Quotation" breadcrumbs={[{ label: "Quotations", to: "/quotations" }, { label: "Edit" }]}
         actions={<>
           <Button variant="outline" size="sm" onClick={() => nav(-1)}><ArrowLeft className="h-4 w-4 mr-1.5" />Cancel</Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Quotation
+            Save Changes
           </Button>
         </>}
       />
@@ -232,7 +249,7 @@ export default function CreateQuotation() {
           <DialogHeader><DialogTitle>Add New Packaging Type</DialogTitle></DialogHeader>
           <form onSubmit={handleAddPackaging} className="space-y-4 pt-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Packaging Name *</label>
+              <label className="text-sm font-medium leading-none">Packaging Name *</label>
               <Input value={newPkgName} onChange={e => setNewPkgName(e.target.value)} placeholder="e.g., Plastic Bag, Box, etc." required />
             </div>
             <Button type="submit" disabled={savingPkg} className="w-full">
@@ -245,18 +262,8 @@ export default function CreateQuotation() {
       <div className="space-y-4">
         <Section title="Customer & Terms">
           <FormGrid cols={3}>
-            <FormRow label="Select CRM Lead">
-              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
-                <SelectTrigger><SelectValue placeholder="Link a lead (optional)" /></SelectTrigger>
-                <SelectContent>
-                  {leadsList.map(l => (
-                    <SelectItem key={l.id} value={l.id}>{l.company_name || l.contact_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormRow>
             <FormRow label="Customer Name *" required>
-              <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Company or contact name" />
+              <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Company or contact name" disabled />
             </FormRow>
             <FormRow label="Currency">
               <Select value={currency} onValueChange={setCurrency}>
@@ -328,10 +335,10 @@ export default function CreateQuotation() {
           </FormGrid>
           <div className="mt-4">
             <FormRow label="Terms of Payment">
-              <textarea 
+              <textarea
                 className="w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                value={paymentTerms} 
-                onChange={e => setPaymentTerms(e.target.value)} 
+                value={paymentTerms}
+                onChange={e => setPaymentTerms(e.target.value)}
                 placeholder="Enter payment terms..."
               />
             </FormRow>
@@ -353,18 +360,18 @@ export default function CreateQuotation() {
                 {items.map((i) => (
                   <tr key={i.id} className="border-b last:border-0 border-border">
                     <td className="px-5 py-2">
-                      <Input 
-                        value={i.product_name} 
+                      <Input
+                        value={i.product_name}
                         onChange={(e) => {
                           const val = e.target.value;
                           const prod = productsList.find(p => p.name === val);
-                          updateItem(i.id, { 
-                            product_name: val, 
+                          updateItem(i.id, {
+                            product_name: val,
                             product_id: prod?.id || "",
                             hsn_code: prod?.hs_code || i.hsn_code
                           });
-                        }} 
-                        placeholder="Type product name..." 
+                        }}
+                        placeholder="Type product name..."
                         list={`products-list-${i.id}`}
                       />
                       <datalist id={`products-list-${i.id}`}>
@@ -372,9 +379,9 @@ export default function CreateQuotation() {
                       </datalist>
                     </td>
                     <td className="px-3 py-2">
-                      <Input 
-                        value={i.hsn_code} 
-                        onChange={(e) => updateItem(i.id, { hsn_code: e.target.value })} 
+                      <Input
+                        value={i.hsn_code}
+                        onChange={(e) => updateItem(i.id, { hsn_code: e.target.value })}
                         placeholder="HSN Code"
                       />
                     </td>
@@ -404,12 +411,12 @@ export default function CreateQuotation() {
               <div className="flex justify-between items-center text-muted-foreground">
                 <span>Tax (%)</span>
                 <span className="flex items-center gap-2">
-                  <Input 
-                    type="number" 
-                    min="0" 
-                    className="h-7 w-16 text-right px-2 py-0" 
-                    value={taxRate || ""} 
-                    onChange={e => setTaxRate(Number(e.target.value) || 0)} 
+                  <Input
+                    type="number"
+                    min="0"
+                    className="h-7 w-16 text-right px-2 py-0"
+                    value={taxRate || ""}
+                    onChange={e => setTaxRate(Number(e.target.value) || 0)}
                     placeholder="0"
                   />
                 </span>
