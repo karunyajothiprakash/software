@@ -708,12 +708,11 @@ export default function GenerateBarcode() {
                 style={{ aspectRatio: `${labelSize.widthIn} / ${labelSize.heightIn}` }}
                 className="w-full max-w-[300px] flex flex-col overflow-hidden shadow-2xl"
               >
-<<<<<<< HEAD
                 <LabelContent
                   sizeId={labelSizeId}
                   code={previewCode}
                   idx={0}
-                  boxCount={boxCount}
+                  boxCount={totalCartons}
                   productName={productName}
                   skuCode={skuCode}
                   selectedSku={selected?.sku}
@@ -721,51 +720,6 @@ export default function GenerateBarcode() {
                   packingDate={packingDate}
                   labelSize={labelSize}
                 />
-=======
-                <div className="bg-black text-white text-center py-[2px] text-[7px] font-black tracking-widest uppercase shrink-0">
-                  Export Cargo Identification
-                </div>
-
-                <div className="flex flex-col flex-1 overflow-hidden text-[6px] font-bold">
-                  {[
-                    ["Company",   "Shastika Global Impex"],
-                    ["Product",   productName || "—"],
-                    ["SKU",       skuCode || selected.sku || "—"],
-                    ["Carton",    `BOX ${startCarton} OF ${totalCartons}`],
-                    ["Weight",    `${netWeight} KG`],
-                    ["Pack Date", packingDate],
-                  ].map(([lbl, val]) => (
-                    <div key={lbl} className="flex border-b border-black shrink-0" style={{ minHeight: "9px" }}>
-                      <div className="w-[36%] border-r border-black px-[2px] flex items-center text-gray-500 uppercase leading-tight">
-                        {lbl}
-                      </div>
-                      <div className="w-[64%] px-[2px] flex items-center font-black truncate leading-tight">
-                        {val}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex flex-col items-center justify-center flex-1 overflow-hidden px-1 py-[2px] w-full">
-                    <div className="text-[6px] font-bold text-center leading-none mb-[2px] w-full truncate px-1">
-                      {previewCode}
-                    </div>
-                    <Barcode
-                      value={previewCode}
-                      width={0.5}
-                      height={20}
-                      format="CODE128"
-                      displayValue={false}
-                      margin={0}
-                      background="transparent"
-                      lineColor="#000000"
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-black text-white text-center py-[1px] text-[5px] font-bold tracking-widest uppercase shrink-0">
-                  Official Cargo ID
-                </div>
->>>>>>> 1c838871329980cc429252c16ed8570e9e9d01fb
               </div>
 
               <p className="text-[10px] text-muted-foreground text-center max-w-[220px] leading-relaxed">
