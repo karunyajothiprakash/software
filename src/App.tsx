@@ -131,6 +131,7 @@ const App = () => (
             <Route path="/pending" element={<Pending />} />
             <Route path="/complete-profile" element={<CompleteProfile />} />
             <Route path="/waiting-approval" element={<WaitingApproval />} />
+            <Route path="/select-profile" element={<Navigate to="/dashboard" replace />} />
             <Route path="/invoices/:id/preview" element={<InvoicePreview />} />
             <Route path="/packing-lists/:id/preview" element={<PackingListPreview />} />
             <Route path="/certificates/:id/preview" element={<CertificatePreview />} />

@@ -66,6 +66,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let profileSub: ReturnType<typeof supabase.channel> | null = null;
     let rolesSub: ReturnType<typeof supabase.channel> | null = null;
     let presenceChannel: ReturnType<typeof supabase.channel> | null = null;
+    let sessionInterval: NodeJS.Timeout | null = null;
+
+    const setupSessionInterval = (sess: Session | null) => {
+      if (sessionInterval) clearInterval(sessionInterval);
+      const activeName = sess?.user?.user_metadata?.active_profile?.full_name;
+      if (activeName) {
+        sessionInterval = setInterval(async () => {
+          await supabase.from('active_sessions')
+            .update({ last_active: new Date().toISOString() })
+            .eq('profile_name', activeName);
+        }, 5 * 60 * 1000);
+      }
+    };
 
     const subscribeRealtime = (uid: string) => {
       // Unsubscribe from any previous channels
@@ -112,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, sess) => {
       setSession(sess);
+      setupSessionInterval(sess);
       if (sess?.user) {
         userId = sess.user.id;
         setTimeout(() => loadUserData(sess.user.id), 0);
@@ -130,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(({ data: { session: sess } }) => {
       setSession(sess);
+      setupSessionInterval(sess);
       if (sess?.user) {
         userId = sess.user.id;
         loadUserData(sess.user.id).finally(() => setLoading(false));
@@ -140,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      if (sessionInterval) clearInterval(sessionInterval);
       subscription.unsubscribe();
       profileSub?.unsubscribe();
       rolesSub?.unsubscribe();
@@ -152,6 +168,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (session?.user) {
+      await supabase.from('active_sessions').delete().eq('user_id', session.user.id);
+    }
     await supabase.auth.signOut();
   };
 
