@@ -63,10 +63,10 @@ export default function SalesAnalytics() {
     <div>
       <PageHeader title="Sales Analytics" description="Pipeline, conversion and revenue trends" breadcrumbs={[{ label: "Dashboards" }, { label: "Sales" }]} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Pipeline Value" value={`$${(totalRevenue/1000).toFixed(0)}K`} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="from database" />
-        <StatCard label="Conversion Rate" value={`${conversionRate.toFixed(1)}%`} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="leads → orders" />
-        <StatCard label="Avg Deal Size" value={`$${(avgDealSize/1000).toFixed(1)}K`} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="from database" />
-        <StatCard label="Win Rate" value={`${winRate.toFixed(1)}%`} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="from database" />
+        <StatCard label="Pipeline Value" value={isLive ? `$${(totalRevenue/1000).toFixed(0)}K` : "—"} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="from database" />
+        <StatCard label="Conversion Rate" value={isLive ? `${conversionRate.toFixed(1)}%` : "—"} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="leads → orders" />
+        <StatCard label="Avg Deal Size" value={isLive ? `$${(avgDealSize/1000).toFixed(1)}K` : "—"} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="from database" />
+        <StatCard label="Win Rate" value={isLive ? `${winRate.toFixed(1)}%` : "—"} delta={{ value: isLive ? "Live" : "No Data", positive: isLive }} hint="from database" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Section title="Orders per Month">
