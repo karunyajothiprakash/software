@@ -325,6 +325,9 @@ export default function CreateQuotation() {
                 <Input type="number" min="0" className="pl-7" value={shipmentCost || ""} onChange={e => setShipmentCost(Number(e.target.value) || 0)} placeholder="0.00" />
               </div>
             </FormRow>
+            <FormRow label="Tax Rate (%)">
+              <Input type="number" min="0" max="100" step="any" value={taxRate} onChange={e => setTaxRate(Number(e.target.value) || 0)} placeholder="0.00" />
+            </FormRow>
           </FormGrid>
           <div className="mt-4">
             <FormRow label="Terms of Payment">
