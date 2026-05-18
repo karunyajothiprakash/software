@@ -124,7 +124,7 @@ const queryClient = new QueryClient();
 
 const DashboardRedirect = () => {
   const { roleSlugs } = useAuth();
-  if (roleSlugs.has("bd")) {
+  if (roleSlugs.has("bd") || roleSlugs.has("bde")) {
     return <Navigate to="/dashboards/sales" replace />;
   }
   return <Navigate to="/dashboards/executive" replace />;
@@ -132,7 +132,7 @@ const DashboardRedirect = () => {
 
 const BDRestrictedRouteOutlet = () => {
   const { roleSlugs } = useAuth();
-  if (roleSlugs.has("bd")) {
+  if (roleSlugs.has("bd") || roleSlugs.has("bde")) {
     return <Navigate to="/dashboards/sales" replace />;
   }
   return <Outlet />;

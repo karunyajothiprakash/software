@@ -17,7 +17,7 @@ export function AppSidebar({ open, onClose }: { open: boolean; onClose: () => vo
   const toggleGroup = (title: string) =>
     setOpenGroups((prev) => (prev.includes(title) ? prev.filter((t) => t !== title) : [...prev, title]));
 
-  const isBD = roleSlugs.has("bd");
+  const isBD = roleSlugs.has("bd") || roleSlugs.has("bde");
 
   // Filter items by permission (if no permission set, always visible)
   const visibleGroups = navGroups
