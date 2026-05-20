@@ -31,7 +31,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
       pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Quotation-${quotation.quotation_number || "download"}.pdf`);
+      pdf.save(`PI-${quotation.quotation_number || "download"}.pdf`);
     } catch (err) {
       console.error("PDF generation error:", err);
     } finally {
@@ -46,10 +46,10 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
   });
   const validityDate = quotation.valid_until
     ? new Date(quotation.valid_until).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
     : "TBD";
 
   const totalAmount = Number(quotation.amount || 0);
@@ -57,15 +57,13 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
     quotation.currency === "USD"
       ? "USD"
       : quotation.currency === "EUR"
-      ? "Euro"
-      : quotation.currency || "INR";
+        ? "Euro"
+        : quotation.currency || "INR";
   const items = quotation.quotation_items || quotation.items || [];
 
   const subtotal = Number(quotation.subtotal || 0);
   const taxRate = Number(quotation.tax_rate || 0);
   const taxAmount = Number(quotation.tax_amount || 0);
-
-  const getAlphaIndex = (index: number) => String.fromCharCode(65 + index);
 
   // Packing info lines
   const packingLines = [
@@ -122,12 +120,12 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
       <div
         ref={docRef}
         className="relative bg-white w-full max-w-[210mm] shadow-2xl print:shadow-none text-black"
-        style={{ border: "1.5px solid #000" }}
+        style={{ border: "1px solid #000" }}
       >
         {/* ── HEADER ROW ── */}
-        <div className="grid" style={{ gridTemplateColumns: "55% 45%", borderBottom: "1.5px solid #000" }}>
+        <div className="grid" style={{ gridTemplateColumns: "55% 45%", borderBottom: "1px solid #000" }}>
           {/* Left: Company name + address */}
-          <div className="p-4" style={{ borderRight: "1.5px solid #000", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div className="p-4" style={{ borderRight: "1px solid #000", display: "flex", flexDirection: "column", alignItems: "center" }}>
             <h1
               style={{
                 color: "#1F618D",
@@ -155,7 +153,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
             </div>
           </div>
 
-          {/* Right: quotation title + details */}
+          {/* Right: PROFORMA INVOICE title + PI details */}
           <div className="p-4 flex flex-col items-center justify-start">
             <h2
               style={{
@@ -168,11 +166,11 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
                 textAlign: "center",
               }}
             >
-             QUOTATION
+              PROFORMA INVOICE
             </h2>
             <div style={{ fontSize: "9.5px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", marginBottom: "8px" }}>
-                <span>Quotation No :</span>
+                <span>PI NO :</span>
                 <span style={{ fontWeight: 700 }}>{quotation.quotation_number || "—"}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", marginBottom: "8px" }}>
@@ -180,7 +178,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
                 <span style={{ fontWeight: 700 }}>{today}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", marginBottom: "4px" }}>
-                <span>VALID UNTIL :</span>
+                <span>VALID PI DATE :</span>
                 <span style={{ fontWeight: 700 }}>{validityDate}</span>
               </div>
             </div>
@@ -190,7 +188,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
         {/* ── SECTION HEADERS ROW ── */}
         <div
           className="grid"
-          style={{ gridTemplateColumns: "33% 34% 33%", borderBottom: "1.5px solid #000" }}
+          style={{ gridTemplateColumns: "33% 34% 33%", borderBottom: "1px solid #000" }}
         >
           {["BILL TO :", "SHIPMENT & TRADE TERMS", "Packing Type"].map((label, i) => (
             <div
@@ -201,7 +199,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
                 fontWeight: 700,
                 color: i < 2 ? "#1F618D" : "#000",
                 textAlign: "center",
-                borderRight: i < 2 ? "1.5px solid #000" : "none",
+                borderRight: i < 2 ? "1px solid #000" : "none",
                 background: "transparent",
               }}
             >
@@ -215,7 +213,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
           className="grid"
           style={{
             gridTemplateColumns: "33% 34% 33%",
-            borderBottom: "1.5px solid #000",
+            borderBottom: "1px solid #000",
             minHeight: "150px",
           }}
         >
@@ -262,18 +260,18 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
         </div>
 
         {/* ── ITEMS TABLE ── */}
-        <div style={{ borderBottom: "1.5px solid #000" }}>
+        <div style={{ borderBottom: "1px solid #000" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <thead>
-              <tr style={{ background: "transparent", borderBottom: "1.5px solid #000" }}>
+              <tr style={{ background: "transparent", borderBottom: "1px solid #000" }}>
                 {[
-                  { label: "A", w: "5%" },
-                  { label: "B", w: "33%", align: "left" },
-                  { label: "C", w: "12%" },
-                  { label: "D", w: "15%" },
-                  { label: "E", w: "10%" },
-                  { label: "F", w: "12%" },
-                  { label: "G", w: "13%" },
+                  { label: "ID", w: "5%" },
+                  { label: "DESCRIPTION", w: "33%", align: "left" },
+                  { label: "HSN", w: "12%" },
+                  { label: "QUANTITY", w: "15%" },
+                  { label: "UNIT", w: "10%" },
+                  { label: "PRICE", w: "12%" },
+                  { label: "AMOUNT", w: "13%" },
                 ].map((col, i, arr) => (
                   <th
                     key={i}
@@ -297,7 +295,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
             <tbody>
               {items.map((item: any, i: number) => (
                 <tr key={i} style={{ borderBottom: "1px solid #000", minHeight: "36px" }}>
-                  <td style={{ textAlign: "center", padding: "6px 2px", fontSize: "9px", borderRight: "1px solid #000" }}>{getAlphaIndex(i)}</td>
+                  <td style={{ textAlign: "center", padding: "6px 2px", fontSize: "9px", borderRight: "1px solid #000" }}>{i + 1}</td>
                   <td style={{ padding: "6px 8px", fontSize: "9px", borderRight: "1px solid #000", wordBreak: "break-word" }}>
                     {item.description || item.product?.name || item.products?.name || item.product_name || "Product"}
                   </td>
@@ -354,7 +352,7 @@ export function QuotationDocument({ quotation, onClose }: QuotationDocumentProps
               </div>
             )}
             <div style={{ padding: "6px 10px 10px", fontSize: "9px", color: "#000", lineHeight: "1.6" }}>
-              <strong>Declaration :</strong> We hereby certify that the goods mentioned above are of Indian origin and the price and details stated in this  quotation are true and correct.
+              <strong>Declaration :</strong> We hereby certify that the goods mentioned above are of Indian origin and the price and details stated in this proforma invoice are true and correct.
             </div>
           </div>
 

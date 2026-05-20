@@ -19,6 +19,8 @@ interface Lead {
   contact_name?: string;
   interested_product?: string;
   email?: string;
+  mobile?: string;
+  country?: string;
 }
 
 interface Product {
@@ -48,6 +50,7 @@ export default function EditQuotation() {
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [validUntil, setValidUntil] = useState("");
   const [incoterm, setIncoterm] = useState("CIF");
@@ -65,6 +68,9 @@ export default function EditQuotation() {
   const [items, setItems] = useState<Item[]>([]);
   const [quoteNumber, setQuoteNumber] = useState("");
   const unitOptions = ["KG", "MT", "G", "LB", "PCS", "BOX", "CTN", "BAG", "L", "ML"];
+  const [estimatedShipmentDate, setEstimatedShipmentDate] = useState("");
+  const [packingPerBag, setPackingPerBag] = useState("");
+  const [bagWeight, setBagWeight] = useState("");
 
   // New Packaging Type State
   const [isPkgModalOpen, setIsPkgModalOpen] = useState(false);
@@ -80,15 +86,25 @@ export default function EditQuotation() {
     }
   };
 
+  const handleLeadChange = (val: string) => {
+    setSelectedLeadId(val);
+    const lead = leadsList.find(l => l.id === val);
+    if (lead) {
+      setCustomerName(lead.company_name || lead.contact_name || "");
+      if (lead.mobile) setCustomerPhone(lead.mobile);
+      if (lead.country) setCustomerAddress(lead.country);
+    }
+  };
+
   useEffect(() => {
     const loadMetadataAndQuotation = async () => {
       if (!id) return;
-      
+
       try {
         setLoading(true);
         let leadsQuery = supabase.from('leads').select('*').order('created_at', { ascending: false });
         let productsQuery = supabase.from('products').select('*');
-        
+
         if (profile?.company_id) {
           productsQuery = productsQuery.eq('company_id', profile.company_id);
         }
@@ -99,7 +115,7 @@ export default function EditQuotation() {
           productsQuery,
           supabase.from('container_types').select('name').order('name'),
           supabase.from('packaging_types').select('name').order('name'),
-          supabase.from('quotations').select('*, customers(name)').eq('id', id).single(),
+          supabase.from('quotations').select('*, customers(name, address, phone)').eq('id', id).single(),
           supabase.from('quotation_items').select('*').eq('quotation_id', id).order('created_at')
         ]);
 
@@ -115,7 +131,8 @@ export default function EditQuotation() {
           setQuoteNumber(q.quotation_number);
           setSelectedLeadId(q.lead_id || "");
           setCustomerName(q.customers?.name || "");
-          setCustomerPhone(q.customer_phone || "");
+          setCustomerAddress(q.customers?.address || "");
+          setCustomerPhone(q.customer_phone || q.customers?.phone || "");
           setCurrency(q.currency || "USD");
           setValidUntil(q.valid_until ? q.valid_until.split('T')[0] : "");
           setIncoterm(q.incoterm || "CIF");
@@ -130,6 +147,9 @@ export default function EditQuotation() {
           setNetWeight(q.net_weight || "");
           setTaxRate(Number(q.tax_rate) || 0);
           setPaymentTerms(q.payment_terms || "");
+          setEstimatedShipmentDate(q.estimated_shipment_date || "");
+          setPackingPerBag(q.packing_per_bag || "");
+          setBagWeight(q.bag_weight || "");
         }
 
         // Load items
@@ -163,7 +183,7 @@ export default function EditQuotation() {
   const handleAddPackaging = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPkgName) return toast.error("Packaging type name is required");
-    
+
     setSavingPkg(true);
     try {
       const { error } = await supabase.from("packaging_types").insert({ name: newPkgName });
@@ -182,27 +202,50 @@ export default function EditQuotation() {
   const addItem = () => setItems((s) => [...s, { id: Date.now().toString(), product_id: "", product_name: "", hsn_code: "", qty: 1, unit: "KG", price: 0 }]);
   const removeItem = (id: string) => setItems((s) => s.filter((i) => i.id !== id));
   const updateItem = (id: string, patch: Partial<Item>) => setItems((s) => s.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-  
+
   const subtotal = items.reduce((s, i) => s + (Number(i.qty) * Number(i.price)), 0);
   const taxableAmount = subtotal + Number(packagingCost) + Number(shipmentCost);
   const taxAmount = (taxableAmount * taxRate) / 100;
   const totalAmount = taxableAmount + taxAmount;
 
   const handleSave = async () => {
-    if (!customerName || items.length === 0 || !items[0].product_name) {
-      return toast.error("Please provide a customer name and at least one product.");
+    if (!customerName || !customerAddress || !customerPhone || items.length === 0 || !items[0].product_name) {
+      return toast.error("Please provide a customer name, address, phone number, and at least one product.");
     }
 
     setSaving(true);
     try {
-      // 1. Create or Find Customer
+      // 1. Find or Create Customer
       let customerId = null;
-      const { data: custData, error: custErr } = await supabase
+      const { data: existingCust } = await supabase
         .from('customers')
-        .insert({ company_id: profile!.company_id, name: customerName })
-        .select('id').single();
-      
-      if (!custErr && custData) customerId = custData.id;
+        .select('id')
+        .eq('company_id', profile!.company_id)
+        .eq('name', customerName)
+        .limit(1);
+
+      if (existingCust && existingCust.length > 0) {
+        customerId = existingCust[0].id;
+        await supabase
+          .from('customers')
+          .update({
+            address: customerAddress || null,
+            phone: customerPhone || null
+          })
+          .eq('id', customerId);
+      } else {
+        const { data: custData, error: custErr } = await supabase
+          .from('customers')
+          .insert({
+            company_id: profile!.company_id,
+            name: customerName,
+            address: customerAddress || null,
+            phone: customerPhone || null
+          })
+          .select('id').single();
+
+        if (!custErr && custData) customerId = custData.id;
+      }
 
       // 2. Update Quotation
       const { error: quoteErr } = await supabase
@@ -223,6 +266,9 @@ export default function EditQuotation() {
           port_of_loading: portOfLoading || null,
           port_of_discharge: portOfDischarge || null,
           net_weight: netWeight || null,
+          estimated_shipment_date: estimatedShipmentDate || null,
+          packing_per_bag: packingPerBag || null,
+          bag_weight: bagWeight || null,
           quotation_number: quoteNumber,
           currency,
           items_count: items.length,
@@ -240,7 +286,7 @@ export default function EditQuotation() {
 
       const insertItems = items.filter(i => i.product_name).map(i => ({
         quotation_id: id,
-        product_id: i.product_id || null, 
+        product_id: i.product_id || null,
         quantity: Number(i.qty),
         unit_price: Number(i.price),
         total_price: Number(i.qty) * Number(i.price),
@@ -275,8 +321,8 @@ export default function EditQuotation() {
 
   return (
     <div>
-      <PageHeader 
-        title={`Edit Quotation ${quoteNumber}`} 
+      <PageHeader
+        title={`Edit Quotation ${quoteNumber}`}
         breadcrumbs={[{ label: "Quotations", to: "/quotations" }, { label: "Edit" }]}
         actions={<>
           <Button variant="outline" size="sm" onClick={() => nav(-1)}><ArrowLeft className="h-4 w-4 mr-1.5" />Cancel</Button>
@@ -306,7 +352,7 @@ export default function EditQuotation() {
         <Section title="Customer & Terms">
           <FormGrid cols={3}>
             <FormRow label="Select CRM Lead">
-              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+              <Select value={selectedLeadId} onValueChange={handleLeadChange}>
                 <SelectTrigger><SelectValue placeholder="Link a lead (optional)" /></SelectTrigger>
                 <SelectContent>
                   {leadsList.map(l => (
@@ -321,8 +367,11 @@ export default function EditQuotation() {
             <FormRow label="Customer Name *" required>
               <Input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Company or contact name" />
             </FormRow>
-            <FormRow label="Customer Phone">
+            <FormRow label="Customer Phone *" required>
               <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="e.g. +491729819755" />
+            </FormRow>
+            <FormRow label="Customer Address *" required>
+              <Input value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} placeholder="Customer address (used in Bill To)" />
             </FormRow>
             <FormRow label="Currency">
               <Select value={currency} onValueChange={setCurrency}>
@@ -403,16 +452,25 @@ export default function EditQuotation() {
             <FormRow label="Port of Discharge">
               <Input value={portOfDischarge} onChange={e => setPortOfDischarge(e.target.value)} placeholder="e.g. Jebel Ali Port" />
             </FormRow>
+            <FormRow label="Est. Shipment Date">
+              <Input type="date" value={estimatedShipmentDate} onChange={e => setEstimatedShipmentDate(e.target.value)} />
+            </FormRow>
+            <FormRow label="Packing Per Bag">
+              <Input value={packingPerBag} onChange={e => setPackingPerBag(e.target.value)} placeholder="e.g. 25" />
+            </FormRow>
+            <FormRow label="Bag Weight (Kg)">
+              <Input value={bagWeight} onChange={e => setBagWeight(e.target.value)} placeholder="e.g. 13" />
+            </FormRow>
             <FormRow label="Tax Rate (%)">
               <Input type="number" min="0" max="100" step="any" value={taxRate} onChange={e => setTaxRate(Number(e.target.value) || 0)} placeholder="0.00" />
             </FormRow>
           </FormGrid>
           <div className="mt-4">
             <FormRow label="Terms of Payment">
-              <textarea 
+              <textarea
                 className="w-full min-h-[100px] p-3 rounded-md border border-input bg-background text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                value={paymentTerms} 
-                onChange={e => setPaymentTerms(e.target.value)} 
+                value={paymentTerms}
+                onChange={e => setPaymentTerms(e.target.value)}
                 placeholder="Enter payment terms..."
               />
             </FormRow>
@@ -433,22 +491,22 @@ export default function EditQuotation() {
               </tr></thead>
               <tbody>
                 {items.map((i, index) => (
-                   <tr key={i.id} className="border-b last:border-0 border-border">
+                  <tr key={i.id} className="border-b last:border-0 border-border">
                     <td className="px-5 py-2 font-medium text-muted-foreground">{getAlphaIndex(index)}</td>
                     <td className="px-3 py-2">
-                      <Input 
-                        value={i.product_name} 
+                      <Input
+                        value={i.product_name}
                         onChange={(e) => {
                           const val = e.target.value;
                           const prod = productsList.find(p => p.name === val);
-                          updateItem(i.id, { 
-                            product_name: val, 
+                          updateItem(i.id, {
+                            product_name: val,
                             product_id: prod?.id || "",
                             hsn_code: prod?.hs_code || i.hsn_code,
                             unit: prod?.unit || i.unit
                           });
-                        }} 
-                        placeholder="Type product name..." 
+                        }}
+                        placeholder="Type product name..."
                         list={`products-list-${i.id}`}
                       />
                       <datalist id={`products-list-${i.id}`}>
@@ -456,20 +514,20 @@ export default function EditQuotation() {
                       </datalist>
                     </td>
                     <td className="px-3 py-2">
-                      <Input 
-                        value={i.hsn_code} 
-                        onChange={(e) => updateItem(i.id, { hsn_code: e.target.value })} 
+                      <Input
+                        value={i.hsn_code}
+                        onChange={(e) => updateItem(i.id, { hsn_code: e.target.value })}
                         placeholder="HSN Code"
                       />
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex gap-1">
-                        <Input 
-                          type="number" 
-                          min="0" 
+                        <Input
+                          type="number"
+                          min="0"
                           step="any"
-                          value={i.qty} 
-                          onChange={(e) => updateItem(i.id, { qty: Number(e.target.value) || 0 })} 
+                          value={i.qty}
+                          onChange={(e) => updateItem(i.id, { qty: Number(e.target.value) || 0 })}
                           className="w-20"
                         />
                         <Select value={i.unit} onValueChange={(val) => updateItem(i.id, { unit: val })}>
@@ -505,12 +563,12 @@ export default function EditQuotation() {
               <div className="flex justify-between items-center text-muted-foreground">
                 <span>Tax (%)</span>
                 <span className="flex items-center gap-2">
-                  <Input 
-                    type="number" 
-                    min="0" 
-                    className="h-7 w-16 text-right px-2 py-0" 
-                    value={taxRate || ""} 
-                    onChange={e => setTaxRate(Number(e.target.value) || 0)} 
+                  <Input
+                    type="number"
+                    min="0"
+                    className="h-7 w-16 text-right px-2 py-0"
+                    value={taxRate || ""}
+                    onChange={e => setTaxRate(Number(e.target.value) || 0)}
                     placeholder="0"
                   />
                 </span>
