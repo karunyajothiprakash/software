@@ -395,15 +395,9 @@ export default function LeadsList() {
                   <TableCell className="text-sm">{lead.country || "-"}</TableCell>
                   <TableCell className="text-sm">{lead.mobile || "-"}</TableCell>
                   <TableCell>
-<<<<<<< Updated upstream
                     {canEditStage ? (
                       <Select 
-                        defaultValue={lead.stage} 
-=======
-                    {isAdmin ? (
-                      <Select
                         defaultValue={lead.stage}
->>>>>>> Stashed changes
                         onValueChange={async (newStage) => {
                           try {
                             const { error } = await supabase.from("leads").update({ stage: newStage }).eq("id", lead.id);
@@ -432,21 +426,20 @@ export default function LeadsList() {
                     {lead.profiles?.full_name || "Unassigned"}
                   </TableCell>
                   <TableCell className="text-right">
-<<<<<<< Updated upstream
-                      <div className="flex items-center justify-end gap-2">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="h-8 text-[10px] font-bold uppercase tracking-wider"
-                          onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            nav("/quotations/create", { state: { lead: lead } });
-                          }}
-                        >
-                          Quote
-                        </Button>
-                        {lead.stage === "won" && (
+                    <div className="flex items-center justify-end gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-8 text-[10px] font-bold uppercase tracking-wider"
+                        onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          nav("/quotations/create", { state: { lead: lead } });
+                        }}
+                      >
+                        Quote
+                      </Button>
+                      {lead.stage?.toLowerCase() === "won" && (
                         <Button 
                           size="sm" 
                           variant="outline" 
@@ -456,23 +449,6 @@ export default function LeadsList() {
                             e.preventDefault();
                             convertToCustomer(lead);
                           }}
-=======
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-[10px] font-bold uppercase tracking-wider"
-                        onClick={(e) => { e.stopPropagation(); nav("/quotations/create", { state: { lead: lead } }); }}
-                      >
-                        Quote
-                      </Button>
-                      {lead.stage === "Won" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-[10px] font-bold uppercase tracking-wider border-emerald-500/50 text-emerald-500 hover:bg-emerald-500 hover:text-white"
-                          onClick={(e) => { e.stopPropagation(); convertToCustomer(lead); }}
->>>>>>> Stashed changes
                         >
                           Convert
                         </Button>
@@ -481,15 +457,11 @@ export default function LeadsList() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 hover:bg-destructive/10"
-<<<<<<< Updated upstream
                         onClick={(e: MouseEvent<HTMLButtonElement>) => {
                           e.stopPropagation();
                           e.preventDefault();
                           confirmDelete(lead.id);
                         }}
-=======
-                        onClick={(e) => { e.stopPropagation(); confirmDelete(lead.id); }}
->>>>>>> Stashed changes
                       >
                         <Trash2 className="h-4 w-4 text-destructive opacity-50 hover:opacity-100" />
                       </Button>

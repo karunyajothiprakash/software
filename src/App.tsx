@@ -20,8 +20,6 @@ import Pending from "./pages/Pending";
 import InvoicePreview from "./pages/documents/InvoicePreview";
 import PackingListPreview from "./pages/documents/PackingListPreview";
 import CertificatePreview from "./pages/documents/CertificatePreview";
-import CommercialInvoicePreview from "./pages/documents/CommercialInvoicePreview";
-import CommercialInvoices from "./pages/documents/CommercialInvoices";
 
 // Dashboards
 import Executive from "./pages/dashboards/Executive";
@@ -162,7 +160,7 @@ const App = () => (
             <Route path="/invoices/:id/preview" element={<InvoicePreview />} />
             <Route path="/packing-lists/:id/preview" element={<PackingListPreview />} />
             <Route path="/documents/packing-lists/:id/preview" element={<PackingListPreview />} />
-            <Route path="/documents/commercial-invoices/:id/preview" element={<CommercialInvoicePreview />} />
+            <Route path="/documents/commercial-invoices/:id/preview" element={<InvoicePreview />} />
             <Route path="/certificates/:id/preview" element={<CertificatePreview />} />
             <Route path="/share/quote/:id" element={<PublicQuotationView />} />
 
@@ -246,7 +244,7 @@ const App = () => (
               <Route path="/documents/invoices" element={<Invoices />} />
               <Route path="/documents/invoices/:id" element={<InvoiceReport />} />
               <Route path="/documents/packing-lists" element={<PackingLists />} />
-              <Route path="/documents/commercial-invoices" element={<CommercialInvoices />} />
+              <Route path="/documents/commercial-invoices" element={<Invoices />} />
               <Route path="/documents/certificates" element={<Certificates />} />
               <Route path="/documents/viewer" element={<DocumentViewer />} />
 
