@@ -91,9 +91,7 @@ serve(async (req) => {
     const zohoFormData = new FormData();
     zohoFormData.append("apikey", apiKey);
     
-    // Convert Blob to File object so Deno fetch sends it correctly as multipart
-    const blobFile = new File([fileData], filename, { type: fileData.type });
-    zohoFormData.append("document", blobFile);
+    zohoFormData.append("document", fileData, filename);
 
     const docId = path.replace(/[^a-zA-Z0-9]/g, "-"); // Create clean document ID
     zohoFormData.append(
@@ -156,7 +154,7 @@ serve(async (req) => {
   } catch (err: any) {
     console.error("Zoho Office Integrator Session Error:", err);
     return new Response(JSON.stringify({ success: false, error: err.message }), {
-      status: 400,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
