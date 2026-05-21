@@ -128,7 +128,8 @@ serve(async (req) => {
     );
 
     // 3. Request Session URL from Zoho Office Integrator
-    const zohoUrl = `https://officeintegrator.${domain}/officeintegrator/api/v1/spreadsheet`;
+    const tld = domain.split('.').pop() || "in";
+    const zohoUrl = `https://api.office-integrator.${tld}/sheet/officeapi/v1/spreadsheet`;
     console.log(`Sending session request to Zoho URL: ${zohoUrl}`);
     
     const zohoResponse = await fetch(zohoUrl, {
@@ -136,7 +137,15 @@ serve(async (req) => {
       body: zohoFormData,
     });
 
-    const zohoResult = await zohoResponse.json();
+    const responseText = await zohoResponse.text();
+    console.log(`Zoho response: ${responseText.slice(0, 500)}`);
+
+    let zohoResult;
+    try {
+      zohoResult = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`Failed to parse Zoho API response (Status ${zohoResponse.status}): ${responseText.slice(0, 300)}`);
+    }
 
     if (!zohoResponse.ok) {
       throw new Error(`Zoho API Error: ${zohoResult.message || JSON.stringify(zohoResult)}`);
