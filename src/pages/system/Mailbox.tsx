@@ -497,11 +497,11 @@ export default function Mailbox() {
   };
 
   const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const MAX_FILE_SIZE = 20 * 1024 * 1024;
     const files = Array.from(e.target.files || []);
     const validFiles = files.filter((file) => {
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`${file.name} exceeds 10MB limit`);
+        toast.error(`${file.name} exceeds 20MB limit`);
         return false;
       }
       return true;
