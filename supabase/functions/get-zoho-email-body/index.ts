@@ -9,6 +9,7 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  try {
     const { accountId, messageId, emailId, folderName } = await req.json();
 
     if (!accountId || !messageId || !emailId) {
@@ -106,7 +107,7 @@ serve(async (req) => {
     }
 
     // 6. Fetch attachments info and download them
-    const attachmentInfoUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${inboxFolder.folderId}/messages/${messageId}/attachmentinfo`;
+    const attachmentInfoUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${targetFolder.folderId}/messages/${messageId}/attachmentinfo`;
     const attachmentInfoResponse = await fetch(attachmentInfoUrl, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
@@ -131,7 +132,7 @@ serve(async (req) => {
           const storagePath = `mailbox/zoho-${messageId}-${att.attachmentId}-${att.attachmentName}`;
           
           // Download attachment content from Zoho
-          const downloadUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${inboxFolder.folderId}/messages/${messageId}/attachments/${att.attachmentId}`;
+          const downloadUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${targetFolder.folderId}/messages/${messageId}/attachments/${att.attachmentId}`;
           const downloadResponse = await fetch(downloadUrl, {
             headers: { 
               Authorization: `Zoho-oauthtoken ${accessToken}`,
