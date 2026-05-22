@@ -804,6 +804,20 @@ export default function Mailbox() {
                 More Folder
               </button>
             </div>
+
+            <div className="mt-8">
+              <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2 px-4">Zoho Apps</h3>
+              <div className="space-y-1 text-sm">
+                <button
+                  onClick={() => window.open("https://sheet.zoho.in/", "_blank")}
+                  className="w-full flex items-center gap-3.5 px-4 py-2 rounded-lg font-medium text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                >
+                  <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                  Zoho Sheet
+                </button>
+                {/* Feel free to add more apps like Zoho Docs/Writer here in the future */}
+              </div>
+            </div>
             
             <div className="mt-8 pb-6 border-t border-gray-300 pt-6">
                <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-4 px-4">System Labels</h3>

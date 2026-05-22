@@ -21,7 +21,7 @@ async function run() {
     const existing = existingProfiles?.find(p => p.full_name?.toLowerCase() === emp.name.toLowerCase() || p.email?.toLowerCase() === emp.email.toLowerCase());
     if (existing) {
       console.log(`Employee ${emp.name} already exists. Updating email to ${emp.email} if needed.`);
-      if (existing.email !== emp.email) {
+      if (existing.e !== emp.email) {
         // Update logic here if needed
       }
     } else {

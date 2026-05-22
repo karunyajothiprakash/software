@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apiKey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 serve(async (req) => {
@@ -18,30 +18,35 @@ serve(async (req) => {
     )
 
     const payload = await req.json()
-    
-    // LOG EVERYTHING so the user can see the Zoho Verification Code in Supabase Logs
     console.log("INBOUND PAYLOAD:", JSON.stringify(payload, null, 2))
+
     const fromEmail = payload.from || payload.sender || payload.envelope?.from
     const subject = payload.subject || "No Subject"
     const body = payload.html || payload.text || payload.plain || ""
 
     if (!fromEmail) {
-      return new Response(JSON.stringify({ error: 'Missing sender email' }), { status: 400 })
+      return new Response(
+        JSON.stringify({ error: 'Missing sender email' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
     }
 
-    // 1. Find the lead by email
+    // 1. Find lead by email
     const { data: lead, error: leadError } = await supabase
       .from('leads')
-      .select('id, company_id, contact_name')
+      .select('id, company_id, contact_name, assigned_to')
       .eq('email', fromEmail)
       .single()
 
     if (leadError || !lead) {
       console.log(`No lead found for email: ${fromEmail}`)
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'No matching lead' }), { status: 200 })
+      return new Response(
+        JSON.stringify({ status: 'ignored', reason: 'No matching lead' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      )
     }
 
-    // 2. Log the inbound activity
+    // 2. Log inbound activity
     const { error: activityError } = await supabase
       .from('activities')
       .insert({
@@ -55,25 +60,32 @@ serve(async (req) => {
 
     if (activityError) throw activityError
 
-    // 3. Create the notification for the lead owner
-    await supabase.from('notifications').insert({
-      title: 'New Email Received',
-      message: `You received an email from ${lead.contact_name || fromEmail}: "${subject}"`,
-      type: 'email',
-      user_id: lead.assigned_to, 
-      company_id: lead.company_id,
-      link: `/crm/leads/${lead.id}`
-    })
+    // 3. Notify lead owner only if assigned
+    if (lead.assigned_to) {
+      const { error: notifError } = await supabase
+        .from('notifications')
+        .insert({
+          title: 'New Email Received',
+          message: `You received an email from ${lead.contact_name || fromEmail}: "${subject}"`,
+          type: 'email',
+          user_id: lead.assigned_to,
+          company_id: lead.company_id,
+          link: `/crm/leads/${lead.id}`
+        })
 
-    return new Response(JSON.stringify({ status: 'success', leadId: lead.id }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+      if (notifError) console.error('Notification insert failed:', notifError.message)
+    }
+
+    return new Response(
+      JSON.stringify({ status: 'success', leadId: lead.id }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    )
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
+    console.error('Edge function error:', error.message)
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+    )
   }
 })

@@ -68,20 +68,47 @@ export default function EmailIntegration() {
   const [imapPort, setImapPort] = useState("993");
   const [imapUser, setImapUser] = useState("");
   const [imapPass, setImapPass] = useState("");
+  const [apiKey, setApiKey] = useState("");
 
   const fetchData = async () => {
     if (!profile?.company_id) return;
-    
-    // 1. Fetch Company Config
-    const { data: comp } = await supabase.from("companies").select("*").eq("id", profile.company_id).single();
-    if (comp) {
-      setSmtpHost(comp.smtp_host || "smtppro.zoho.in");
-      setSmtpPort(comp.smtp_port || "465");
-      setSmtpUser(comp.smtp_user || "");
-      setFromEmail(comp.from_email || "");
-      setImapHost(comp.imap_host || "imappro.zoho.in");
-      setImapPort(String(comp.imap_port || "993"));
-      setImapUser(comp.imap_user || "");
+
+    // 1. Fetch Company Config — handle missing api_key column gracefully
+    try {
+      const { data: comp, error } = await supabase.from("companies").select("*").eq("id", profile.company_id).single();
+      if (error) throw error;
+      if (comp) {
+        setSmtpHost(comp.smtp_host || "smtppro.zoho.in");
+        setSmtpPort(comp.smtp_port || "465");
+        setSmtpUser(comp.smtp_user || "");
+        setFromEmail(comp.from_email || "");
+        setImapHost(comp.imap_host || "imappro.zoho.in");
+        setImapPort(String(comp.imap_port || "993"));
+        setImapUser(comp.imap_user || "");
+        setApiKey(comp.api_key || "");
+      }
+    } catch (err: any) {
+      console.warn("Failed to select companies.* — falling back to select known columns:", err?.message);
+      // Fallback: select only known columns (avoid referencing missing api_key)
+      const { data: comp2, error: err2 } = await supabase
+        .from("companies")
+        .select("id, smtp_host, smtp_port, smtp_user, from_email, imap_host, imap_port, imap_user")
+        .eq("id", profile.company_id)
+        .single();
+      if (err2) {
+        console.error("Failed to fetch company config:", err2.message || err2);
+        // leave defaults in place
+      } else if (comp2) {
+        setSmtpHost(comp2.smtp_host || "smtppro.zoho.in");
+        setSmtpPort(comp2.smtp_port || "465");
+        setSmtpUser(comp2.smtp_user || "");
+        setFromEmail(comp2.from_email || "");
+        setImapHost(comp2.imap_host || "imappro.zoho.in");
+        setImapPort(String(comp2.imap_port || "993"));
+        setImapUser(comp2.imap_user || "");
+        // api_key column missing — keep apiKey state empty
+        setApiKey("");
+      }
     }
 
     // 2. Fetch Recent Email Activities
@@ -155,15 +182,25 @@ export default function EmailIntegration() {
     setSaving(true);
     const updateData: any = { 
       smtp_host: smtpHost, smtp_port: smtpPort, smtp_user: smtpUser, from_email: fromEmail,
-      imap_host: imapHost, imap_port: parseInt(imapPort), imap_user: imapUser
+      imap_host: imapHost, imap_port: parseInt(imapPort), imap_user: imapUser,
+      api_key: apiKey
     };
     if (smtpPass) updateData.smtp_pass = smtpPass;
     if (imapPass) updateData.imap_pass = imapPass;
 
     const { error } = await supabase.from("companies").update(updateData).eq("id", profile.company_id);
     setSaving(false);
-    if (error) toast.error("Error: " + error.message);
-    else toast.success("Configuration saved.");
+    if (error) {
+      // Detect common schema/cache error when api_key column is missing
+      const msg = error.message || String(error);
+      if (msg.toLowerCase().includes("api_key") || msg.toLowerCase().includes("column \"api_key\"")) {
+        toast.error("Save failed: 'api_key' column missing in database. Run the migration file supabase/migrations/20260522120000_add_api_key_to_companies.sql on your DB.");
+      } else {
+        toast.error("Error: " + msg);
+      }
+    } else {
+      toast.success("Configuration saved.");
+    }
   };
 
   const filteredEmails = emails.filter(e => 
@@ -285,6 +322,13 @@ export default function EmailIntegration() {
                   <FormRow label="IMAP Port"><Input value={imapPort} onChange={e => setImapPort(e.target.value)} /></FormRow>
                   <FormRow label="Username"><Input value={imapUser} onChange={e => setImapUser(e.target.value)} /></FormRow>
                   <FormRow label="Password"><Input type="password" value={imapPass} onChange={e => setImapPass(e.target.value)} /></FormRow>
+                </div>
+              </Section>
+              <Section title="API Configuration">
+                <div className="space-y-4">
+                  <FormRow label="API Key">
+                    <Input type="password" placeholder="Enter API Key (e.g. Resend or Zoho)" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                  </FormRow>
                 </div>
               </Section>
            </div>

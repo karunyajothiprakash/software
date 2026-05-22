@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import { encode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -129,10 +130,16 @@ serve(async (req) => {
       if (attachmentsList.length > 0) {
         console.log(`Found ${attachmentsList.length} attachments to download...`);
         for (const att of attachmentsList) {
-          const storagePath = `mailbox/zoho-${messageId}-${att.attachmentId}-${att.attachmentName}`;
-          
-          // Download attachment content from Zoho
-          const downloadUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${targetFolder.folderId}/messages/${messageId}/attachments/${att.attachmentId}`;
+          // Normalize common Zoho attachment field names
+          const attachmentId = att.attachmentId || att.id || att.attachment_id || att.attachmentId || att.attachmentid;
+          const filenameRaw = att.attachmentName || att.fileName || att.name || att.attachment_name || att.filename || "attachment";
+          const contentType = att.contentType || att.content_type || att.mimeType || att.type || "application/octet-stream";
+
+          const safeName = (filenameRaw || "attachment").replace(/[^a-zA-Z0-9.\-_]/g, "_");
+          const storagePath = `mailbox/zoho-${messageId}-${attachmentId}-${safeName}`;
+
+          // Download attachment content from Zoho (try normalized attachment id)
+          const downloadUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${targetFolder.folderId}/messages/${messageId}/attachments/${attachmentId}`;
           const downloadResponse = await fetch(downloadUrl, {
             headers: { 
               Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -144,12 +151,36 @@ serve(async (req) => {
             const blob = await downloadResponse.blob();
             const arrayBuffer = await blob.arrayBuffer();
             const fileData = new Uint8Array(arrayBuffer);
-            
+
+            // Check if it's an inline image (used in the body)
+            const cid = att.contentId || att.cid || att.content_id || att.cidValue;
+            const isInline = Boolean(cid) || att.isInline === "1" || att.isInline === true || att.inline === true || att.is_inline === 1;
+
+            if (isInline && (contentType || "").toString().startsWith("image/")) {
+              try {
+                // Ensure we use Uint8Array for base64
+                const base64Str = encode(fileData instanceof Uint8Array ? fileData : new Uint8Array(fileData));
+                const dataUri = `data:${contentType};base64,${base64Str}`;
+
+                // Replace cid references in the HTML content robustly
+                if (cid) {
+                  const cleanCid = String(cid).replace(/[<>]/g, '');
+                  // match src=cid:..., src="cid:...", src='cid:...'
+                  const cidRegex = new RegExp(`cid:?<?${cleanCid}>?`, 'gi');
+                  htmlContent = htmlContent.replace(new RegExp(`src=["']?cid:?<?${cleanCid}>?["']?`, 'gi'), `src="${dataUri}"`);
+                  // Also replace plain cid references without src= (rare)
+                  htmlContent = htmlContent.replace(cidRegex, dataUri);
+                }
+              } catch (err) {
+                console.error("Failed to base64 encode inline attachment", err);
+              }
+            }
+
             // Upload to Supabase Storage
             const { error: uploadError } = await supabase.storage
               .from("email-attachments")
               .upload(storagePath, fileData, {
-                contentType: att.contentType || "application/octet-stream",
+                contentType: contentType || "application/octet-stream",
                 upsert: true
               });
               
@@ -160,7 +191,8 @@ serve(async (req) => {
               dbAttachments.push({
                 filename: att.attachmentName,
                 path: storagePath,
-                contentType: att.contentType || "application/octet-stream"
+                contentType: att.contentType || "application/octet-stream",
+                isInline: isInline
               });
             }
           } else {
