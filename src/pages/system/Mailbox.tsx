@@ -290,16 +290,22 @@ export default function Mailbox() {
   async function fetchAccounts() {
     try {
       setLoading(true);
+      const isAdmin = roleSlugs?.has("admin") || 
+                      (profile?.requested_role && ["admin", "manager"].includes(profile.requested_role.toLowerCase()));
       const isBde = roleSlugs?.has("bd") || 
                     roleSlugs?.has("bde") || 
                     (profile?.requested_role && ["bd", "bde"].includes(profile.requested_role.toLowerCase()));
 
       let query = supabase.from("zoho_accounts").select("*");
       
-      if (isBde) {
+      if (isAdmin) {
+        // Admins/managers can see ALL company accounts (RLS handles company filtering)
+        // No additional filter needed - RLS policy restricts to same company_id
+      } else if (isBde) {
         query = query.or(`user_id.eq.${profile?.id},account_email.eq.bde@shastikaglobalimpex.co.in`);
       } else {
-        query = query.eq("user_id", profile?.id);
+        // Regular users: show accounts they own OR any shared company accounts
+        query = query.or(`user_id.eq.${profile?.id},account_email.eq.bde@shastikaglobalimpex.co.in`);
       }
 
       const { data, error } = await query;
@@ -1009,9 +1015,13 @@ export default function Mailbox() {
                     </h3>
                     <div className="flex flex-wrap gap-3">
                       {selectedEmail.attachments.map((att: any, i: number) => {
-                        const isSpreadsheet = att.filename?.toLowerCase().endsWith(".xlsx") || 
-                                              att.filename?.toLowerCase().endsWith(".xls") || 
-                                              att.filename?.toLowerCase().endsWith(".csv");
+                        const fname = att.filename?.toLowerCase() || "";
+                        const isSpreadsheet = fname.endsWith(".xlsx") || fname.endsWith(".xls") || fname.endsWith(".csv") || fname.endsWith(".ods") || fname.endsWith(".tsv");
+                        const isDocument = fname.endsWith(".doc") || fname.endsWith(".docx") || fname.endsWith(".odt") || fname.endsWith(".rtf") || fname.endsWith(".txt") || fname.endsWith(".html");
+                        const isPresentation = fname.endsWith(".ppt") || fname.endsWith(".pptx") || fname.endsWith(".odp");
+                        const isPdf = fname.endsWith(".pdf");
+                        // Zoho Office Integrator frequently rejects PDFs with 400 Unsupported Format, so we omit it
+                        const isZohoSupported = isSpreadsheet || isDocument || isPresentation;
                         
                         return (
                           <div
@@ -1021,6 +1031,8 @@ export default function Mailbox() {
                             <div className="flex items-center gap-3">
                               {isSpreadsheet ? (
                                 <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+                              ) : isPdf ? (
+                                <FileText className="h-5 w-5 text-rose-600" />
                               ) : (
                                 <FileText className="h-5 w-5 text-gray-600" />
                               )}
@@ -1052,21 +1064,21 @@ export default function Mailbox() {
                                 <Download className="h-4 w-4" />
                               </Button>
 
-                              {isSpreadsheet && (
+                              {isZohoSupported && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className="rounded-lg border-emerald-500 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900"
                                   onClick={() => handleEditWithZoho(att, i)}
                                   disabled={openingZohoIndex === i}
-                                  title="Edit with Zoho Sheet"
+                                  title={isSpreadsheet ? "Edit with Zoho Sheet" : "Edit with Zoho Writer"}
                                 >
                                   {openingZohoIndex === i ? (
                                     <Loader2 className="h-4 w-4 animate-spin text-emerald-600 mr-2" />
                                   ) : (
                                     <FileSpreadsheet className="h-4 w-4 mr-2" />
                                   )}
-                                  <span>Edit with Zoho Sheet</span>
+                                  <span>Edit with Zoho</span>
                                 </Button>
                               )}
                             </div>

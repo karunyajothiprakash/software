@@ -87,11 +87,57 @@ serve(async (req) => {
       throw new Error(`Failed to download attachment from storage: ${downloadError?.message || "File empty"}`);
     }
 
-    // 2. Prepare Zoho request
+    // 2. Determine the correct MIME type from filename extension
+    let ext = filename.toLowerCase().split('.').pop() || "";
+    // If filename has no extension (split returned the whole filename), force xlsx
+    if (ext === filename.toLowerCase()) {
+      ext = "xlsx";
+    }
+
+    const mimeMap: Record<string, string> = {
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      xls: "application/vnd.ms-excel",
+      csv: "text/csv",
+      ods: "application/vnd.oasis.opendocument.spreadsheet",
+      tsv: "text/tab-separated-values",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      odt: "application/vnd.oasis.opendocument.text",
+      rtf: "application/rtf",
+      txt: "text/plain",
+      html: "text/html",
+      ppt: "application/vnd.ms-powerpoint",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      odp: "application/vnd.oasis.opendocument.presentation",
+      pdf: "application/pdf",
+    };
+    
+    // Default to spreadsheet if unknown
+    const correctMime = mimeMap[ext] || mimeMap["xlsx"];
+    
+    // Determine which Zoho API to use based on file type
+    const documentExts = ["doc", "docx", "odt", "rtf", "txt", "html"];
+    const presentationExts = ["ppt", "pptx", "odp"];
+    
+    let zohoApiPath = "sheet/officeapi/v1/spreadsheet"; // default: spreadsheet
+    let saveFormat = "xlsx";
+    if (documentExts.includes(ext)) {
+      zohoApiPath = "writer/officeapi/v1/document";
+      saveFormat = ext === "pdf" ? "pdf" : "docx";
+    } else if (presentationExts.includes(ext)) {
+      zohoApiPath = "show/officeapi/v1/presentation";
+      saveFormat = "pptx";
+    }
+
+    // 3. Prepare Zoho request with correct MIME type
     const zohoFormData = new FormData();
     zohoFormData.append("apikey", apiKey);
     
-    zohoFormData.append("document", fileData, filename);
+    // Create a new Blob with the correct MIME type so Zoho recognizes the format
+    const correctBlob = new Blob([await fileData.arrayBuffer()], { type: correctMime });
+    // If filename doesn't have an extension, append the guessed one so Zoho knows how to parse it
+    const finalFilename = filename.toLowerCase().endsWith(`.${ext}`) ? filename : `${filename}.${ext}`;
+    zohoFormData.append("document", correctBlob, finalFilename);
 
     const docId = path.replace(/[^a-zA-Z0-9]/g, "-"); // Create clean document ID
     zohoFormData.append(
@@ -108,7 +154,7 @@ serve(async (req) => {
       "callback_settings",
       JSON.stringify({
         save_url: functionUrl,
-        save_format: "xlsx",
+        save_format: saveFormat,
       })
     );
 
@@ -127,10 +173,10 @@ serve(async (req) => {
       })
     );
 
-    // 3. Request Session URL from Zoho Office Integrator
+    // 4. Request Session URL from Zoho Office Integrator
     const tld = domain.split('.').pop() || "in";
-    const zohoUrl = `https://api.office-integrator.${tld}/sheet/officeapi/v1/spreadsheet`;
-    console.log(`Sending session request to Zoho URL: ${zohoUrl}`);
+    const zohoUrl = `https://api.office-integrator.${tld}/${zohoApiPath}`;
+    console.log(`Sending session request to Zoho URL: ${zohoUrl} (ext: ${ext}, mime: ${correctMime})`);
     
     const zohoResponse = await fetch(zohoUrl, {
       method: "POST",
@@ -138,7 +184,7 @@ serve(async (req) => {
     });
 
     const responseText = await zohoResponse.text();
-    console.log(`Zoho response: ${responseText.slice(0, 500)}`);
+    console.log(`Zoho response (status ${zohoResponse.status}): ${responseText.slice(0, 1000)}`);
 
     let zohoResult;
     try {
@@ -147,15 +193,18 @@ serve(async (req) => {
       throw new Error(`Failed to parse Zoho API response (Status ${zohoResponse.status}): ${responseText.slice(0, 300)}`);
     }
 
-    if (!zohoResponse.ok) {
-      throw new Error(`Zoho API Error: ${zohoResult.message || JSON.stringify(zohoResult)}`);
+    // Check for errors in the response body too (Zoho sometimes returns 200 with error)
+    if (!zohoResponse.ok || zohoResult.error || (!zohoResult.document_url && !zohoResult.documentUrl)) {
+      const errMsg = zohoResult.message || zohoResult.error || JSON.stringify(zohoResult);
+      throw new Error(`Zoho API Error: ${errMsg} | Debug: file="${filename}", ext="${ext}", mime="${correctMime}", api="${zohoApiPath}", status=${zohoResponse.status}`);
     }
 
-    console.log(`Successfully created Zoho session. Editor URL: ${zohoResult.document_url}`);
+    const editorUrl = zohoResult.document_url || zohoResult.documentUrl;
+    console.log(`Successfully created Zoho session. Editor URL: ${editorUrl}`);
 
     return new Response(JSON.stringify({ 
       success: true, 
-      document_url: zohoResult.document_url 
+      document_url: editorUrl
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
