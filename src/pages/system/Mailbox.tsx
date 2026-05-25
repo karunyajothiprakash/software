@@ -990,8 +990,10 @@ export default function Mailbox() {
                             {selectedEmail.from_address.includes('<') ? `<${selectedEmail.from_address.split('<')[1]}` : ''}
                           </span>
                         </div>
-                        <div className="text-xs text-gray-600 mt-0.5">
-                          to me
+                        <div className="text-xs text-gray-600 mt-0.5 flex flex-col gap-0.5">
+                          <div><span className="font-medium text-gray-400">To:</span> {selectedEmail.to_address}</div>
+                          {selectedEmail.cc_address && <div><span className="font-medium text-gray-400">CC:</span> {selectedEmail.cc_address}</div>}
+                          {selectedEmail.bcc_address && <div><span className="font-medium text-gray-400">BCC:</span> {selectedEmail.bcc_address}</div>}
                         </div>
                       </div>
                     </div>
@@ -1108,8 +1110,18 @@ export default function Mailbox() {
                 )}
 
                 <div className="mt-12 pl-12 flex gap-3 border-t border-gray-300 pt-8 pb-12">
-                   <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"><Reply className="h-4 w-4 mr-2" /> Reply</Button>
-                   <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"><Forward className="h-4 w-4 mr-2" /> Forward</Button>
+                   <Button variant="outline" onClick={() => {
+                     setIsComposing(true);
+                     setTo(selectedEmail.from_address);
+                     setSubject(selectedEmail.subject?.startsWith('Re:') ? selectedEmail.subject : `Re: ${selectedEmail.subject || ''}`);
+                     setContent(`<br/><br/><div style="border-left: 2px solid #ccc; padding-left: 10px; margin-top: 10px; color: #666;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
+                   }} className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"><Reply className="h-4 w-4 mr-2" /> Reply</Button>
+                   <Button variant="outline" onClick={() => {
+                     setIsComposing(true);
+                     setTo("");
+                     setSubject(selectedEmail.subject?.startsWith('Fwd:') ? selectedEmail.subject : `Fwd: ${selectedEmail.subject || ''}`);
+                     setContent(`<br/><br/><div style="border-left: 2px solid #ccc; padding-left: 10px; margin-top: 10px; color: #666;">---------- Forwarded message ---------<br/>From: ${selectedEmail.from_address}<br/>Date: ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}<br/>Subject: ${selectedEmail.subject}<br/>To: ${selectedEmail.to_address}<br/><br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
+                   }} className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"><Forward className="h-4 w-4 mr-2" /> Forward</Button>
                    <Button variant="outline" onClick={() => handleForceFetchEmail(selectedEmail)} className="rounded-full px-6 bg-white border-amber-300 text-amber-700 hover:bg-amber-100 ml-auto"><RefreshCw className={`h-4 w-4 mr-2 ${loadingBody ? 'animate-spin' : ''}`} /> Load Missing Attachments</Button>
                 </div>
               </div>
