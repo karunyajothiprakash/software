@@ -82,18 +82,25 @@ export default function EditQuotation() {
 
   useEffect(() => {
     const loadMetadataAndQuotation = async () => {
-      if (!profile?.company_id || !id) return;
+      if (!id) return;
       
       try {
         setLoading(true);
+        let leadsQuery = supabase.from('leads').select('*').order('created_at', { ascending: false });
+        let productsQuery = supabase.from('products').select('*');
+        
+        if (profile?.company_id) {
+          productsQuery = productsQuery.eq('company_id', profile.company_id);
+        }
+
         // Load metadata options
         const [leadsRes, productsRes, containersRes, pkgsRes, quoteRes, itemsRes] = await Promise.all([
-          supabase.from('leads').select('*').eq('company_id', profile.company_id),
-          supabase.from('products').select('*').eq('company_id', profile.company_id),
+          leadsQuery,
+          productsQuery,
           supabase.from('container_types').select('name').order('name'),
           supabase.from('packaging_types').select('name').order('name'),
           supabase.from('quotations').select('*, customers(name)').eq('id', id).single(),
-          supabase.from('quotation_items').select('*').eq('quotation_id', id)
+          supabase.from('quotation_items').select('*').eq('quotation_id', id).order('created_at')
         ]);
 
         if (leadsRes.data) setLeadsList(leadsRes.data);

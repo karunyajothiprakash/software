@@ -20,6 +20,15 @@ type Activity = {
   profiles?: { full_name: string };
 };
 
+type Quotation = {
+  id: string;
+  quotation_number: string;
+  status: string;
+  created_at: string;
+  amount: number;
+  currency: string;
+};
+
 type Lead = {
   id: string;
   company_name: string;
@@ -57,6 +66,7 @@ export default function LeadDetail() {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState(false);
   const [newProduct, setNewProduct] = useState("");
@@ -84,6 +94,15 @@ export default function LeadDetail() {
 
         if (actsError) throw actsError;
         setActivities(acts as unknown as Activity[]);
+
+        const { data: quotes, error: quotesError } = await supabase
+          .from("quotations")
+          .select(`id, quotation_number, status, created_at, amount, currency`)
+          .eq("lead_id", id)
+          .order("created_at", { ascending: false });
+
+        if (quotesError) throw quotesError;
+        setQuotations(quotes as unknown as Quotation[]);
       } catch (error: any) {
         toast.error(error.message || "Failed to load lead details");
       } finally {
@@ -216,6 +235,26 @@ export default function LeadDetail() {
                   </li>
                 ))}
               </ol>
+            )}
+          </Section>
+          <Section title="Quotations">
+            {quotations.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No quotations connected to this lead yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {quotations.map((q) => (
+                  <div key={q.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => nav(`/quotations/edit/${q.id}`)}>
+                    <div>
+                      <div className="font-semibold text-sm text-primary">{q.quotation_number}</div>
+                      <div className="text-xs text-muted-foreground">{format(new Date(q.created_at), "PP")}</div>
+                    </div>
+                    <div className="text-right flex flex-col items-end gap-1">
+                      <div className="font-medium text-sm">{q.currency} {q.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <StatusBadge status={q.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </Section>
         </div>

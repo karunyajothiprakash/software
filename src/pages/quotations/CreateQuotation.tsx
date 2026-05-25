@@ -252,13 +252,22 @@ export default function CreateQuotation() {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!profile?.company_id) return;
+      let leadsQuery = supabase.from('leads').select('*').order('created_at', { ascending: false });
+      let productsQuery = supabase.from('products').select('*');
+      
+      if (profile?.company_id) {
+        productsQuery = productsQuery.eq('company_id', profile.company_id);
+      }
+
       const [leadsRes, productsRes, containersRes, pkgsRes] = await Promise.all([
-        supabase.from('leads').select('*').eq('company_id', profile.company_id),
-        supabase.from('products').select('*').eq('company_id', profile.company_id),
+        leadsQuery,
+        productsQuery,
         supabase.from('container_types').select('name').order('name'),
         supabase.from('packaging_types').select('name').order('name')
       ]);
+      console.log("LEADS FETCH RESULT:", leadsRes);
+      if (leadsRes.error) console.error("Leads error:", leadsRes.error);
+      
       if (leadsRes.data) setLeadsList(leadsRes.data);
       if (productsRes.data) setProductsList(productsRes.data);
       if (containersRes.data) setContainerTypesList(containersRes.data);
