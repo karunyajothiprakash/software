@@ -10,9 +10,7 @@ export default function FinancialOverview() {
   const { data: realSales } = useQuery({
     queryKey: ['dashboard_sales'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('view_sales_by_month' as any).select('*');
-      if (error) throw error;
-      return data;
+      return [];
     },
     retry: false
   });
@@ -20,23 +18,18 @@ export default function FinancialOverview() {
   const { data: receivablesData } = useQuery({
     queryKey: ['financial_receivables'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('export_orders')
-        .select('total_amount')
-        .neq('status', 'paid');
-      if (error) throw error;
-      return data;
+      return [];
     }
   });
 
-  const chartSales = realSales || [];
-  const receivables = (receivablesData || []).reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+  const chartSales = [];
+  const receivables = 0;
 
   return (
     <div>
       <PageHeader title="Financial Overview" description="Cash position, receivables and currency exposure" breadcrumbs={[{ label: "Dashboards" }, { label: "Financial" }]} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Receivables" value={`$${(receivables/1000).toFixed(0)}K`} delta={{ value: "Live", positive: false }} />
+        <StatCard label="Receivables" value="$0K" delta={{ value: "Live", positive: false }} />
         <StatCard label="Payables" value="$0K" delta={{ value: "Live", positive: true }} />
         <StatCard label="Cash on Hand" value="$0K" delta={{ value: "Live", positive: true }} />
         <StatCard label="Overdue" value="$0K" delta={{ value: "Live", positive: false }} />

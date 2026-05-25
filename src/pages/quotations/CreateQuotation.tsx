@@ -325,8 +325,27 @@ export default function CreateQuotation() {
       
       if (!custErr && custData) customerId = custData.id;
 
-      // 2. Create Quotation
-      const finalQuoteNumber = quoteNumber || `QT-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      // 2. Generate unique quotation number
+      let finalQuoteNumber = quoteNumber;
+      if (!finalQuoteNumber) {
+        // Get the count of existing quotations for this company this year
+        const currentYear = new Date().getFullYear();
+        const { data: existingQuotes, error: countErr } = await supabase
+          .from('quotations')
+          .select('id')
+          .eq('company_id', profile!.company_id)
+          .ilike('quotation_number', `QT-${currentYear}-%`);
+        
+        if (!countErr && existingQuotes) {
+          const nextNumber = (existingQuotes.length + 1).toString().padStart(4, '0');
+          finalQuoteNumber = `QT-${currentYear}-${nextNumber}`;
+        } else {
+          // Fallback if query fails
+          finalQuoteNumber = `QT-${currentYear}-0001`;
+        }
+      }
+
+      // 3. Create Quotation
 
       const { data: quoteData, error: quoteErr } = await supabase
         .from('quotations')
@@ -365,7 +384,6 @@ export default function CreateQuotation() {
         quotation_id: quoteData.id,
         product_id: i.product_id || null, 
         quantity: Number(i.qty),
-        unit: i.unit,
         unit_price: Number(i.price),
         total_price: Number(i.qty) * Number(i.price),
         description: i.product_name,

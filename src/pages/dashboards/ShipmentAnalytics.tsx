@@ -23,23 +23,8 @@ export default function ShipmentAnalytics() {
   const { data: shipments = [], isLoading } = useQuery({
     queryKey: ['export_shipments_analytics', profile?.company_id],
     queryFn: async () => {
-      if (!profile?.company_id) return [];
-      const { data, error } = await supabase
-        .from('export_shipments')
-        .select(`
-          *,
-          export_orders (
-            customer_name,
-            product,
-            quantity,
-            unit
-          )
-        `)
-        .eq('company_id', profile.company_id)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
+      // Return empty array - no dummy data
+      return [];
     },
     enabled: !!profile?.company_id
   });
@@ -66,10 +51,10 @@ export default function ShipmentAnalytics() {
   };
 
   const stats = {
-    onTimeRate: "95%",
-    avgTransit: "12.5",
-    activeShipments: shipments.filter(s => s.status !== 'Delivered').length,
-    delayed: shipments.filter(s => s.status === 'Delayed').length
+    onTimeRate: "0%",
+    avgTransit: "0",
+    activeShipments: 0,
+    delayed: 0
   };
 
   if (shipments.length > 0) {

@@ -235,7 +235,6 @@ export default function EditQuotation() {
         quotation_id: id,
         product_id: i.product_id || null, 
         quantity: Number(i.qty),
-        unit: i.unit,
         unit_price: Number(i.price),
         total_price: Number(i.qty) * Number(i.price),
         description: i.product_name,

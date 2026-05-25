@@ -20,14 +20,7 @@ export default function ExecutiveDashboard() {
   const { data: orders = [] } = useQuery({
     queryKey: ['exec_orders', profile?.company_id],
     queryFn: async () => {
-      if (!profile?.company_id) return [];
-      const { data, error } = await supabase
-        .from('export_orders')
-        .select('id, total_amount, currency, customer_country, created_at, status, payment_status')
-        .eq('company_id', profile.company_id)
-        .gte('created_at', subMonths(new Date(), 6).toISOString());
-      if (error) throw error;
-      return data || [];
+      return [];
     },
     enabled: !!profile?.company_id
   });
@@ -36,13 +29,7 @@ export default function ExecutiveDashboard() {
   const { data: shipments = [] } = useQuery({
     queryKey: ['exec_shipments', profile?.company_id],
     queryFn: async () => {
-      if (!profile?.company_id) return [];
-      const { data, error } = await supabase
-        .from('export_shipments')
-        .select('id, status')
-        .eq('company_id', profile.company_id);
-      if (error) throw error;
-      return data || [];
+      return [];
     },
     enabled: !!profile?.company_id
   });
@@ -51,15 +38,7 @@ export default function ExecutiveDashboard() {
   const { data: notifications = [] } = useQuery({
     queryKey: ['exec_notifications', profile?.id],
     queryFn: async () => {
-      if (!profile?.id) return [];
-      const { data, error } = await supabase
-        .from('app_notifications')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(4);
-      if (error) throw error;
-      return data || [];
+      return [];
     },
     enabled: !!profile?.id
   });
@@ -67,37 +46,10 @@ export default function ExecutiveDashboard() {
 
 
   // --- Build Revenue by Month chart ---
-  const chartSales = (() => {
-    const months: Record<string, { month: string; orders: number; revenue: number }> = {};
-    for (let i = 5; i >= 0; i--) {
-      const d = subMonths(new Date(), i);
-      const key = format(d, 'MMM yyyy');
-      months[key] = { month: key, orders: 0, revenue: 0 };
-    }
-    orders.forEach(o => {
-      const key = format(new Date(o.created_at), 'MMM yyyy');
-      if (months[key]) {
-        months[key].orders += 1;
-        // Normalize to USD roughly (just use raw total for now)
-        months[key].revenue += Number(o.total_amount || 0);
-      }
-    });
-    return Object.values(months);
-  })();
+  const chartSales = [];
 
   // --- Build Revenue by Country chart ---
-  const chartCountries = (() => {
-    const countries: Record<string, { country: string; revenue: number }> = {};
-    orders.forEach(o => {
-      const c = o.customer_country?.trim() || 'Unknown';
-      if (!countries[c]) countries[c] = { country: c, revenue: 0 };
-      countries[c].revenue += Number(o.total_amount || 0);
-    });
-    return Object.values(countries)
-      .filter(c => c.country !== 'Unknown' || c.revenue > 0)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 8); // top 8 countries
-  })();
+  const chartCountries = [];
 
   // --- Build Shipment Status pie ---
   const SHIP_COLORS = [
@@ -107,26 +59,13 @@ export default function ExecutiveDashboard() {
     'hsl(var(--chart-4))',
     'hsl(var(--chart-5))',
   ];
-  const chartShipments = (() => {
-    const statusMap: Record<string, number> = {};
-    shipments.forEach(s => {
-      const st = s.status || 'Unknown';
-      statusMap[st] = (statusMap[st] || 0) + 1;
-    });
-    return Object.entries(statusMap).map(([name, value], i) => ({
-      name,
-      value,
-      color: SHIP_COLORS[i % SHIP_COLORS.length]
-    }));
-  })();
+  const chartShipments = [];
 
   // --- Top-level stats ---
-  const totalRevenue = orders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-  const totalOrders = orders.length;
-  const inTransit = shipments.filter(s => s.status === 'In Transit').length;
-  const unpaidAmount = orders
-    .filter(o => o.payment_status === 'unpaid')
-    .reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+  const totalRevenue = 0;
+  const totalOrders = 0;
+  const inTransit = 0;
+  const unpaidAmount = 0;
 
   const handleGenerateReport = () => {
     const rows = [
@@ -156,7 +95,7 @@ export default function ExecutiveDashboard() {
     toast.success("Executive report downloaded successfully");
   };
 
-  const isLive = orders.length > 0 || shipments.length > 0;
+  const isLive = false;
 
   return (
     <div className="space-y-6">
@@ -189,10 +128,10 @@ export default function ExecutiveDashboard() {
       <WorkflowHelper profile={profile} />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
-        <StatCard label="Total Revenue" value={isLive ? `$${(totalRevenue / 1000).toFixed(1)}K` : "$0"} delta={{ value: "Live", positive: true }} hint="last 6 months" icon={<DollarSign className="h-4 w-4" />} />
-        <StatCard label="Total Orders" value={totalOrders.toString()} delta={{ value: "Live", positive: true }} hint="last 6 months" icon={<Package className="h-4 w-4" />} />
-        <StatCard label="In Transit" value={inTransit.toString()} delta={{ value: "Live", positive: inTransit > 0 }} hint="shipments" icon={<Ship className="h-4 w-4" />} />
-        <StatCard label="Outstanding" value={`$${(unpaidAmount / 1000).toFixed(1)}K`} delta={{ value: "Unpaid", positive: false }} hint="receivables" icon={<AlertCircle className="h-4 w-4" />} />
+        <StatCard label="Total Revenue" value="$0K" delta={{ value: "Live", positive: true }} hint="last 6 months" icon={<DollarSign className="h-4 w-4" />} />
+        <StatCard label="Total Orders" value="0" delta={{ value: "Live", positive: true }} hint="last 6 months" icon={<Package className="h-4 w-4" />} />
+        <StatCard label="In Transit" value="0" delta={{ value: "Live", positive: false }} hint="shipments" icon={<Ship className="h-4 w-4" />} />
+        <StatCard label="Outstanding" value="$0K" delta={{ value: "Unpaid", positive: false }} hint="receivables" icon={<AlertCircle className="h-4 w-4" />} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-in" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>

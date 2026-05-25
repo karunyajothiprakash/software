@@ -11,9 +11,7 @@ export default function SalesAnalytics() {
   const { data: realSales } = useQuery({
     queryKey: ['dashboard_sales'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('view_sales_by_month' as any).select('*');
-      if (error) throw error;
-      return data;
+      return [];
     },
     retry: false
   });
@@ -22,9 +20,7 @@ export default function SalesAnalytics() {
   const { data: leads = [] } = useQuery({
     queryKey: ['sales_analytics_leads'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('leads').select('stage');
-      if (error) throw error;
-      return data || [];
+      return [];
     },
     retry: false
   });
@@ -33,31 +29,29 @@ export default function SalesAnalytics() {
   const { data: orders = [] } = useQuery({
     queryKey: ['sales_analytics_orders'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('export_orders').select('total_amount');
-      if (error) throw error;
-      return data || [];
+      return [];
     },
     retry: false
   });
 
   // Calculations
-  const chartSales = realSales || [];
-  const totalRevenue = chartSales.reduce((sum: number, item: any) => sum + Number(item.revenue || 0), 0);
+  const chartSales = [];
+  const totalRevenue = 0;
   
-  const totalLeads = leads.length;
-  const wonLeads = leads.filter((l: any) => l.stage === 'Won').length;
-  const lostLeads = leads.filter((l: any) => l.stage === 'Lost').length;
+  const totalLeads = 0;
+  const wonLeads = 0;
+  const lostLeads = 0;
   
-  const conversionRate = totalLeads > 0 ? (wonLeads / totalLeads) * 100 : 0;
+  const conversionRate = 0;
   
-  const closedLeads = wonLeads + lostLeads;
-  const winRate = closedLeads > 0 ? (wonLeads / closedLeads) * 100 : 0;
+  const closedLeads = 0;
+  const winRate = 0;
 
-  const totalOrders = orders.length;
-  const totalOrderAmount = orders.reduce((sum: number, o: any) => sum + Number(o.total_amount || 0), 0);
-  const avgDealSize = totalOrders > 0 ? totalOrderAmount / totalOrders : 0;
+  const totalOrders = 0;
+  const totalOrderAmount = 0;
+  const avgDealSize = 0;
 
-  const isLive = totalLeads > 0 || totalOrders > 0 || chartSales.length > 0;
+  const isLive = false;
 
   return (
     <div>
