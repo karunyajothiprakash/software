@@ -269,6 +269,14 @@ export default function Mailbox() {
 
   const handleSelectEmail = async (email: any) => {
     setSelectedEmail(email);
+    if (!email.is_read) {
+      supabase.from("emails").update({ is_read: true }).eq("id", email.id).then(({ error }) => {
+        if (!error) {
+          setSentEmails(prev => prev.map(e => e.id === email.id ? { ...e, is_read: true } : e));
+          setSelectedEmail((prev: any) => prev?.id === email.id ? { ...prev, is_read: true } : prev);
+        }
+      });
+    }
     setIsComposing(false);
 
     if ((!email.body_html || !email.body_html.includes("<div")) && email.zoho_message_id) {
