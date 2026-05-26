@@ -28,17 +28,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-// ─── FIX 1: Logo URL for email signature ────────────────────────────────────
-// Replace this with your actual hosted logo URL.
-// Options:
-//   • https://shastikaglobal.co.in/logo.png          (your website)
-//   • A Supabase Storage public URL                   (most reliable for email)
-//   • https://shastikaglobalexport.co.in/logo.png    (ERP domain)
-//
-// IMPORTANT: The URL must be publicly accessible (no auth required).
-// For best email client support, use an absolute https:// URL.
-const COMPANY_LOGO_URL = "https://sxebygxpjzntogzpjnga.supabase.co/storage/v1/object/public/chat-attachments/company-logo-1779776670741.png";
+// ─── Logo URL for email signature ────────────────────────────────────────────
+const COMPANY_LOGO_URL =
+  "https://sxebygxpjzntogzpjnga.supabase.co/storage/v1/object/public/chat-attachments/company-logo-1779776670741.png";
 
+// ─── Signature generator — matches the screenshot layout exactly ─────────────
 const getDefaultSignature = (profile: any) => {
   if (!profile) return "";
 
@@ -47,23 +41,25 @@ const getDefaultSignature = (profile: any) => {
   let role = "Business Development Executive";
   if (profile.requested_role) {
     const matched = [
-      { slug: "admin",       label: "Admin" },
-      { slug: "manager",     label: "Manager" },
-      { slug: "bd",          label: "Business Development Executive" },
-      { slug: "bde",         label: "Business Development Executive" },
-      { slug: "accounts",    label: "Accounts Manager" },
-      { slug: "operations",  label: "Operations Executive" },
-      { slug: "qc",          label: "Quality Control Specialist" },
-      { slug: "procurement", label: "Procurement Specialist" },
-      { slug: "data_analyst",label: "Data Analyst" },
-      { slug: "marketing",   label: "Marketing Specialist" },
-      { slug: "hr",          label: "HR Manager" },
+      { slug: "admin",        label: "Admin" },
+      { slug: "manager",      label: "Manager" },
+      { slug: "bd",           label: "Business Development Executive" },
+      { slug: "bde",          label: "Business Development Executive" },
+      { slug: "accounts",     label: "Accounts Manager" },
+      { slug: "operations",   label: "Operations Executive" },
+      { slug: "qc",           label: "Quality Control Specialist" },
+      { slug: "procurement",  label: "Procurement Specialist" },
+      { slug: "data_analyst", label: "Data Analyst" },
+      { slug: "marketing",    label: "Marketing Specialist" },
+      { slug: "hr",           label: "HR Manager" },
     ].find(r => r.slug === profile.requested_role.toLowerCase());
 
     if (matched) {
       role = matched.label;
     } else {
-      role = profile.requested_role.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+      role = profile.requested_role
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c: string) => c.toUpperCase());
     }
   }
 
@@ -72,62 +68,51 @@ const getDefaultSignature = (profile: any) => {
   const phone    = "+91 95662 66228";
   const whatsapp = "+91 95662 66241";
 
-  // ── FIX 1 applied: use <img> with the logo URL instead of text initials ──
   return `
-    <p>Warm Regards,</p>
-    <p><br></p>
-    <table cellpadding="0" cellspacing="0" style="border: none; font-family: Verdana, sans-serif; font-size: 10pt; line-height: 1.4; border-collapse: collapse; background: transparent;">
-      <tr>
-        <td style="vertical-align: middle; padding-right: 15px; border-right: 2px solid #D4A017;">
-          <img
-            src="${COMPANY_LOGO_URL}"
-            alt="${company} logo"
-            width="90"
-            style="display: block; width: 90px; height: auto; max-height: 70px; object-fit: contain;"
-          />
-        </td>
-        <td style="vertical-align: top; padding-left: 15px; border: none;">
-          <div style="font-weight: bold; font-size: 11pt; color: inherit; margin-bottom: 2px;">${name}</div>
-          <div style="font-size: 9.5pt; margin-bottom: 2px; opacity: 0.8;">${role}</div>
-          <div style="font-weight: bold; font-size: 9.5pt; margin-bottom: 4px;">${company}</div>
-          <div style="font-size: 9pt; opacity: 0.8; margin-top: 6px; line-height: 1.5;">
-            ${whatsapp ? `WhatsApp: <a href="https://wa.me/${whatsapp.replace(/[^0-9]/g, '')}" target="_blank" style="color: #D4A017; text-decoration: underline;">${whatsapp}</a><br>` : ""}
-            ${phone    ? `Phone: <span>${phone}</span><br>` : ""}
-            ${email    ? `Email: <a href="mailto:${email}" style="color: #D4A017; text-decoration: underline;">${email}</a><br>` : ""}
-            Web: <a href="https://shastikaglobal.co.in" target="_blank" style="color: #D4A017; text-decoration: underline;">https://shastikaglobal.co.in</a>
-          </div>
-        </td>
-      </tr>
-    </table>
-  `;
+<p><em><strong>Warm Regards,</strong></em></p>
+<p><br></p>
+<div style="display:inline-flex; align-items:center; font-family:Verdana,sans-serif; font-size:10pt;">
+  <div style="padding-right:14px;">
+    <img
+      src="${COMPANY_LOGO_URL}"
+      alt="logo"
+      width="72"
+      style="display:block; width:72px; height:auto; max-height:60px; object-fit:contain;"
+    />
+  </div>
+  <div style="width:2px; background-color:#cccccc; align-self:stretch; margin-right:14px;"></div>
+  <div>
+    <div style="font-weight:bold; font-size:11pt; color:#000000; margin-bottom:1px;">${name}</div>
+    <div style="font-size:9pt; color:#444444; margin-bottom:1px;">${role}</div>
+    <div style="font-weight:bold; font-size:9.5pt; color:#000000; margin-bottom:6px;">${company}</div>
+    <div style="font-size:9pt; color:#444444; line-height:1.6;">
+      WhatsApp: <a href="https://wa.me/${whatsapp.replace(/[^0-9]/g, "")}" target="_blank" style="color:#7c3aed; text-decoration:underline;">${whatsapp}</a><br/>
+      Phone: ${phone}<br/>
+      Email : <a href="mailto:${email}" style="color:#7c3aed; text-decoration:underline;">${email}</a><br/>
+      Web: <a href="https://shastikaglobal.co.in" target="_blank" style="color:#7c3aed; text-decoration:underline;">https://shastikaglobal.co.in</a>
+    </div>
+  </div>
+</div>
+`;
 };
 
-// ─── FIX 2: Helper to fix images in received email body HTML ────────────────
-// Called via a React ref after the email body div renders.
-// Handles:
-//   • cid: images (inline attachments) — hides them with a placeholder label
-//   • Cross-origin images — sets referrerPolicy so they load in the browser
-//   • Broken images — adds onerror fallback
+// ─── Fix images in received email body HTML ───────────────────────────────────
 function fixEmailBodyImages(el: HTMLDivElement | null) {
   if (!el) return;
 
   el.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
     const originalSrc = img.getAttribute("src") || "";
 
-    // cid: images are inline MIME attachments — browsers cannot load them directly.
-    // Hide them silently. To show them properly, fix in get-zoho-email-body Edge Function.
     if (originalSrc.startsWith("cid:")) {
       img.style.display = "none";
       return;
     }
 
-    // For all normal external images: allow cross-origin loading
     img.referrerPolicy = "no-referrer";
     img.loading        = "lazy";
     img.style.maxWidth = "100%";
     img.style.height   = "auto";
 
-    // On error: hide silently — no warning pill shown to user
     img.onerror = () => {
       img.style.display = "none";
     };
@@ -166,7 +151,7 @@ export default function Mailbox() {
   // Zoho Office Integrator
   const [openingZohoIndex, setOpeningZohoIndex] = useState<number | null>(null);
 
-  // ─── FIX 2: ref for the email body div so we can fix images after render ──
+  // Ref for email body div
   const emailBodyRef = useRef<HTMLDivElement | null>(null);
 
   const handleEditWithZoho = async (att: any, index: number) => {
@@ -223,7 +208,7 @@ export default function Mailbox() {
     }
   }, [profile?.email_signature, isSettingsOpen]);
 
-  // ─── FIX 2: run image fixes every time selectedEmail body changes ─────────
+  // Run image fixes every time selectedEmail body changes
   useEffect(() => {
     if (emailBodyRef.current) {
       fixEmailBodyImages(emailBodyRef.current);
@@ -270,15 +255,11 @@ export default function Mailbox() {
   const handleSelectEmail = async (email: any) => {
     setSelectedEmail(email);
     if (!email.is_read) {
-      // Optimistically mark email as read in UI for instant unread count / read state updates
       setSentEmails(prev => prev.map(e => e.id === email.id ? { ...e, is_read: true } : e));
       setSelectedEmail((prev: any) => prev?.id === email.id ? { ...prev, is_read: true } : prev);
 
-      // Perform update to Supabase in background
       supabase.from("emails").update({ is_read: true }).eq("id", email.id).then(({ error }) => {
-        if (error) {
-          console.error("Failed to mark email as read in database:", error);
-        }
+        if (error) console.error("Failed to mark email as read in database:", error);
       });
     }
     setIsComposing(false);
@@ -288,9 +269,9 @@ export default function Mailbox() {
       try {
         const { data } = await supabase.functions.invoke("get-zoho-email-body", {
           body: {
-            accountId: email.account_id,
-            messageId: email.zoho_message_id,
-            emailId:   email.id,
+            accountId:  email.account_id,
+            messageId:  email.zoho_message_id,
+            emailId:    email.id,
             folderName: email.folder
           }
         });
@@ -386,8 +367,8 @@ export default function Mailbox() {
 
       if (data && data.length > 0) {
         setAccounts(data);
-        const bdeAccount    = data.find(acc => acc.account_email.toLowerCase().startsWith("bde@"));
-        const defaultId     = bdeAccount ? bdeAccount.id : data[0].id;
+        const bdeAccount = data.find(acc => acc.account_email.toLowerCase().startsWith("bde@"));
+        const defaultId  = bdeAccount ? bdeAccount.id : data[0].id;
         setSelectedAccount(defaultId);
         await fetchHistory(defaultId);
       }
@@ -556,7 +537,6 @@ export default function Mailbox() {
           toast.error("Failed to send email: " + (funcData.error || "Unknown error"), { id: `sending-${emailRow.id}` });
           setSentEmails(prev => prev.map(e => e.id === emailRow.id ? { ...e, status: "failed" } : e));
         } else {
-          // Zoho successfully accepted and sent the mail!
           toast.success(`✓ Sent: ${emailRow.subject || "(No Subject)"}`, { id: `sending-${emailRow.id}`, duration: 4000 });
           setSentEmails(prev => prev.map(e => e.id === emailRow.id ? { ...e, status: "sent" } : e));
         }
@@ -582,20 +562,20 @@ export default function Mailbox() {
   };
 
   const folders = [
-    { id: "inbox",   label: "Inbox",  icon: Inbox,    count: sentEmails.filter(e => (!e.folder || e.folder.toLowerCase() === "inbox") && !e.is_read).length },
-    { id: "starred", label: "Starred",icon: Star },
-    { id: "snoozed", label: "Snoozed",icon: Clock },
-    { id: "sent",    label: "Sent",   icon: SendIcon, count: sentEmails.filter(e => e.folder?.toLowerCase() === "sent").length },
-    { id: "drafts",  label: "Drafts", icon: FileIcon, count: sentEmails.filter(e => e.folder?.toLowerCase() === "draft" || e.folder?.toLowerCase() === "drafts").length },
+    { id: "inbox",   label: "Inbox",   icon: Inbox,    count: sentEmails.filter(e => (!e.folder || e.folder.toLowerCase() === "inbox") && !e.is_read).length },
+    { id: "starred", label: "Starred", icon: Star },
+    { id: "snoozed", label: "Snoozed", icon: Clock },
+    { id: "sent",    label: "Sent",    icon: SendIcon, count: sentEmails.filter(e => e.folder?.toLowerCase() === "sent").length },
+    { id: "drafts",  label: "Drafts",  icon: FileIcon, count: sentEmails.filter(e => e.folder?.toLowerCase() === "draft" || e.folder?.toLowerCase() === "drafts").length },
   ];
 
   const filteredEmails = sentEmails.filter(email => {
     const folderName = email.folder?.toLowerCase() || "inbox";
 
-    if (activeFolder === "inbox"   && folderName !== "inbox") return false;
-    if (activeFolder === "sent"    && folderName !== "sent")  return false;
+    if (activeFolder === "inbox"   && folderName !== "inbox")   return false;
+    if (activeFolder === "sent"    && folderName !== "sent")    return false;
     if (activeFolder === "drafts"  && folderName !== "draft" && folderName !== "drafts") return false;
-    if (activeFolder === "starred" && !email.is_starred)      return false;
+    if (activeFolder === "starred" && !email.is_starred)        return false;
     if (activeFolder === "snoozed" && folderName !== "snoozed") return false;
 
     if (filterHasAttachment) {
@@ -606,9 +586,9 @@ export default function Mailbox() {
 
     if (filterDateRange !== "all") {
       const diffDays = (Date.now() - new Date(email.received_at || email.created_at).getTime()) / 86400000;
-      if (filterDateRange === "today"  && diffDays > 1)  return false;
-      if (filterDateRange === "week"   && diffDays > 7)  return false;
-      if (filterDateRange === "month"  && diffDays > 30) return false;
+      if (filterDateRange === "today" && diffDays > 1)  return false;
+      if (filterDateRange === "week"  && diffDays > 7)  return false;
+      if (filterDateRange === "month" && diffDays > 30) return false;
     }
 
     if (!searchQuery) return true;
@@ -623,6 +603,7 @@ export default function Mailbox() {
 
   return (
     <div className="h-[calc(100vh-6rem)] flex flex-col pt-0 w-full overflow-hidden bg-white">
+
       {/* ── Top Header / Search ── */}
       <div className="flex items-center gap-4 py-4 px-8 shrink-0 bg-white border-b border-gray-200">
         <div className="flex items-center gap-3 w-64 shrink-0">
@@ -719,9 +700,9 @@ export default function Mailbox() {
             <span className="font-medium text-gray-600">{isConnected ? "Live Sync" : "Connecting..."}</span>
           </div>
           <div className="hidden md:flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="rounded-full h-9 w-9 bg-gray-100 border border-gray-300 text-gray-600 hover:text-gray-900 hover:bg-gray-200 shadow-sm"
               onClick={() => setIsSettingsOpen(true)}
               title="Mail Settings & Signature"
@@ -747,6 +728,7 @@ export default function Mailbox() {
       </div>
 
       <div className="flex flex-1 overflow-hidden bg-white">
+
         {/* ── Left Sidebar ── */}
         <div className="w-64 shrink-0 flex flex-col pr-4 pt-6 pl-6 bg-gray-50">
           <div className="mb-6">
@@ -843,6 +825,7 @@ export default function Mailbox() {
 
         {/* ── Main Content Area ── */}
         <div className="flex-1 flex flex-col min-w-0 bg-white border border-gray-300 rounded-t-[2rem] mt-4 mr-4 shadow-2xl overflow-hidden relative">
+
           {/* Action Bar */}
           <div className="h-14 flex items-center px-6 gap-4 shrink-0 bg-gray-50/50 backdrop-blur-md sticky top-0 z-10 border-b border-gray-300">
             {selectedEmail || isComposing ? (
@@ -873,6 +856,7 @@ export default function Mailbox() {
           </div>
 
           <ScrollArea className="flex-1 bg-transparent">
+
             {/* ── Compose View ── */}
             {isComposing ? (
               <div className="p-8 max-w-4xl mx-auto w-full">
@@ -900,7 +884,7 @@ export default function Mailbox() {
                       value={content}
                       onChange={setContent}
                       className="mb-12 border-none"
-                      modules={{ 
+                      modules={{
                         toolbar: [["bold","italic","underline"], [{"list":"ordered"},{"list":"bullet"}], ["link","image","clean"]],
                         imageResize: { parchment: Quill.import("parchment"), modules: ["Resize", "DisplaySize"] }
                       }}
@@ -976,14 +960,14 @@ export default function Mailbox() {
                       <Button variant="ghost" size="icon" onClick={() => handleForceFetchEmail(selectedEmail)} title="Reload Message from Server" className="h-8 w-8 rounded-full text-amber-600 hover:text-amber-700 hover:bg-gray-200/50">
                         <RefreshCw className={`h-4 w-4 ${loadingBody ? "animate-spin" : ""}`} />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><Star    className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><Reply   className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><MoreVertical className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><Star         className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><Reply        className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><MoreVertical  className="h-4 w-4" /></Button>
                     </div>
                   </div>
                 </div>
 
-                {/* ── FIX 2 & 3: Email body with image ref + loading state ── */}
+                {/* Email body */}
                 <div className="pt-2 pl-12 text-sm leading-relaxed text-gray-700 min-h-[300px]">
                   {loadingBody ? (
                     <div className="flex flex-col items-center justify-center py-20 text-gray-500 space-y-4">
@@ -1024,9 +1008,11 @@ export default function Mailbox() {
                         return (
                           <div key={i} className="flex items-center justify-between gap-4 bg-gray-100/50 px-4 py-3 rounded-xl border border-gray-300 text-sm shadow-sm group hover:scale-[1.01] transition-all min-w-[280px]">
                             <div className="flex items-center gap-3">
-                              {isSpreadsheet ? <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-                                : isPdf ? <FileText className="h-5 w-5 text-rose-600" />
-                                : <FileText className="h-5 w-5 text-gray-600" />}
+                              {isSpreadsheet
+                                ? <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+                                : isPdf
+                                  ? <FileText className="h-5 w-5 text-rose-600" />
+                                  : <FileText className="h-5 w-5 text-gray-600" />}
                               <div className="text-left">
                                 <div className="font-semibold text-gray-800 truncate max-w-[180px]" title={att.filename}>{att.filename}</div>
                                 <div className="text-[10px] text-gray-600 font-semibold uppercase mt-0.5">{att.contentType || "File"}</div>
@@ -1068,27 +1054,36 @@ export default function Mailbox() {
 
                 {/* Reply / Forward bar */}
                 <div className="mt-12 pl-12 flex gap-3 border-t border-gray-300 pt-8 pb-12">
-                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800" onClick={() => {
-                    setIsComposing(true);
-                    setTo(selectedEmail.from_address);
-                    setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`);
-                    setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
-                  }}><Reply className="h-4 w-4 mr-2" /> Reply</Button>
+                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"
+                    onClick={() => {
+                      setIsComposing(true);
+                      setTo(selectedEmail.from_address);
+                      setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`);
+                      setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
+                    }}>
+                    <Reply className="h-4 w-4 mr-2" /> Reply
+                  </Button>
 
-                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800" onClick={() => {
-                    setIsComposing(true);
-                    setTo(selectedEmail.from_address);
-                    setCc(selectedEmail.cc_address || "");
-                    setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`);
-                    setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
-                  }}><Reply className="h-4 w-4 mr-2" /> Reply All</Button>
+                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"
+                    onClick={() => {
+                      setIsComposing(true);
+                      setTo(selectedEmail.from_address);
+                      setCc(selectedEmail.cc_address || "");
+                      setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`);
+                      setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
+                    }}>
+                    <Reply className="h-4 w-4 mr-2" /> Reply All
+                  </Button>
 
-                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800" onClick={() => {
-                    setIsComposing(true);
-                    setTo("");
-                    setSubject(selectedEmail.subject?.startsWith("Fwd:") ? selectedEmail.subject : `Fwd: ${selectedEmail.subject || ""}`);
-                    setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">---------- Forwarded message ---------<br/>From: ${selectedEmail.from_address}<br/>Date: ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}<br/>Subject: ${selectedEmail.subject}<br/>To: ${selectedEmail.to_address}<br/><br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
-                  }}><Forward className="h-4 w-4 mr-2" /> Forward</Button>
+                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"
+                    onClick={() => {
+                      setIsComposing(true);
+                      setTo("");
+                      setSubject(selectedEmail.subject?.startsWith("Fwd:") ? selectedEmail.subject : `Fwd: ${selectedEmail.subject || ""}`);
+                      setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">---------- Forwarded message ---------<br/>From: ${selectedEmail.from_address}<br/>Date: ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}<br/>Subject: ${selectedEmail.subject}<br/>To: ${selectedEmail.to_address}<br/><br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
+                    }}>
+                    <Forward className="h-4 w-4 mr-2" /> Forward
+                  </Button>
 
                   <Button variant="outline" onClick={() => handleForceFetchEmail(selectedEmail)} className="rounded-full px-6 bg-white border-amber-300 text-amber-700 hover:bg-amber-100 ml-auto">
                     <RefreshCw className={`h-4 w-4 mr-2 ${loadingBody ? "animate-spin" : ""}`} /> Load Missing Attachments
@@ -1200,7 +1195,7 @@ export default function Mailbox() {
                 This signature will be automatically appended to all outgoing emails.
               </p>
 
-              {/* ── FIX 1: Logo preview above signature editor ── */}
+              {/* Logo preview */}
               <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 mb-3">
                 <img
                   src={COMPANY_LOGO_URL}
@@ -1221,7 +1216,7 @@ export default function Mailbox() {
                   value={signatureText}
                   onChange={setSignatureText}
                   className="border-none"
-                  modules={{ 
+                  modules={{
                     toolbar: [["bold","italic","underline"], [{"list":"ordered"},{"list":"bullet"}], ["link","image","clean"]],
                     imageResize: { parchment: Quill.import("parchment"), modules: ["Resize", "DisplaySize"] }
                   }}
@@ -1250,7 +1245,6 @@ export default function Mailbox() {
 
       {/* ── Global Styles ── */}
       <style dangerouslySetInnerHTML={{__html: `
-        /* ── FIX 3: Images in received emails ── */
         .email-body-content img {
           max-width: 100%;
           height: auto;
@@ -1264,21 +1258,17 @@ export default function Mailbox() {
           color: #d97706;
           text-decoration: underline;
         }
-
-        /* Scrollbar */
         ::-webkit-scrollbar       { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }
         ::-webkit-scrollbar-thumb:hover { background: #f59e0b80; }
-
-        /* Quill editor overrides */
-        .ql-toolbar.ql-snow  { border: 1px solid #e5e7eb !important; background: #f9fafb !important; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+        .ql-toolbar.ql-snow   { border: 1px solid #e5e7eb !important; background: #f9fafb !important; border-top-left-radius: 12px; border-top-right-radius: 12px; }
         .ql-container.ql-snow { border: 1px solid #e5e7eb !important; background: #ffffff !important; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; font-size: 14px; }
         .ql-editor              { min-height: 250px; color: #1f2937 !important; }
         .ql-editor.ql-blank::before { color: #9ca3af !important; font-style: normal; }
-        .ql-snow .ql-stroke     { stroke: #6b7280 !important; }
-        .ql-snow .ql-fill       { fill:  #6b7280 !important; }
-        .ql-snow .ql-picker      { color: #6b7280 !important; }
+        .ql-snow .ql-stroke    { stroke: #6b7280 !important; }
+        .ql-snow .ql-fill      { fill:  #6b7280 !important; }
+        .ql-snow .ql-picker     { color: #6b7280 !important; }
         .ql-snow .ql-picker-options { background-color: #f9fafb !important; border: 1px solid #e5e7eb !important; }
       `}} />
     </div>
