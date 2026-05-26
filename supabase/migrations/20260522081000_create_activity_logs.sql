@@ -98,7 +98,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   _lead_name TEXT;
 BEGIN
-  _lead_name := COALESCE(NEW.company_name, NEW.contact_name, NEW.id);
+  _lead_name := COALESCE(NEW.company_name, NEW.contact_name, NEW.id::text);
   IF TG_OP = 'INSERT' THEN
     PERFORM public.log_activity('LEAD', 'Created lead ' || _lead_name, NEW.company_id);
   ELSIF TG_OP = 'UPDATE' AND OLD.stage IS DISTINCT FROM NEW.stage THEN
@@ -119,7 +119,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   _inv_num TEXT;
 BEGIN
-  _inv_num := COALESCE(NEW.order_number, NEW.id);
+  _inv_num := COALESCE(NEW.order_number, NEW.id::text);
   IF TG_OP = 'INSERT' THEN
     PERFORM public.log_activity('INVOICE', 'Created invoice ' || _inv_num, NEW.company_id);
   ELSIF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
@@ -140,7 +140,7 @@ RETURNS TRIGGER AS $$
 DECLARE
   _ship_num TEXT;
 BEGIN
-  _ship_num := COALESCE(NEW.shipment_number, NEW.id);
+  _ship_num := COALESCE(NEW.shipment_number, NEW.id::text);
   IF TG_OP = 'INSERT' THEN
     PERFORM public.log_activity('SHIPMENT', 'Created export shipment ' || _ship_num, NEW.company_id);
   ELSIF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
