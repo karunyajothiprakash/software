@@ -361,8 +361,12 @@ export default function Mailbox() {
 
       let query = supabase.from("zoho_accounts").select("*");
 
-      if (!isAdmin) {
-        query = query.or(`user_id.eq.${profile?.id},account_email.eq.bde@shastikaglobalimpex.co.in`);
+      if (isAdmin) {
+        // Admin sees all mails
+      } else if (isBde) {
+        query = query.eq("account_email", "bde@shastikaglobalimpex.co.in");
+      } else {
+        query = query.eq("user_id", profile?.id || "");
       }
 
       const { data, error } = await query;
