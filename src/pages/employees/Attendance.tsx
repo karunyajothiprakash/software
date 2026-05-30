@@ -1,17 +1,28 @@
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Section } from "@/components/shared/FormShell";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { format, subDays } from "date-fns";
+import { format, subDays, differenceInDays, addDays, parseISO, startOfMonth } from "date-fns";
 import { Loader2, Fingerprint, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EsslUploader } from "./EsslUploader";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
-const past14Days = Array.from({ length: 14 }, (_, i) => {
-  const d = subDays(new Date(), 13 - i);
-  return format(d, 'yyyy-MM-dd');
-});
+const generateDateArray = (startStr: string, endStr: string) => {
+  try {
+    const start = parseISO(startStr);
+    const end = parseISO(endStr);
+    const daysCount = differenceInDays(end, start) + 1;
+    if (daysCount <= 0 || daysCount > 100) return [];
+    return Array.from({ length: daysCount }, (_, i) => {
+      return format(addDays(start, i), 'yyyy-MM-dd');
+    });
+  } catch (e) {
+    return [];
+  }
+};
 
 export default function Attendance() {
   const [loading, setLoading] = useState(true);
@@ -22,7 +33,16 @@ export default function Attendance() {
   const [userId, setUserId] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
 
-  const loadData = async () => {
+  // Dynamic Date States
+  const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 13), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [preset, setPreset] = useState("14days");
+
+  const daysInRange = useMemo(() => {
+    return generateDateArray(startDate, endDate);
+  }, [startDate, endDate]);
+
+  const loadData = async (startVal: string, endVal: string) => {
     setLoading(true);
     
     // Get current user
@@ -47,12 +67,12 @@ export default function Attendance() {
     const myProfile = profiles?.find(p => p.id === user?.id);
     if (myProfile?.company_id) setCompanyId(myProfile.company_id);
 
-    // Fetch attendance logs
-    const startDate = past14Days[0];
+    // Fetch attendance logs within dynamic range
     const { data: logs, error: logsErr } = await supabase
       .from('attendance_logs')
       .select('*')
-      .gte('date', startDate);
+      .gte('date', startVal)
+      .lte('date', endVal);
 
     if (!logsErr && logs) {
       const grouped: Record<string, any> = {};
@@ -72,8 +92,104 @@ export default function Attendance() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(startDate, endDate);
+
+    // Subscribe to realtime updates on attendance_logs
+    const channel = supabase
+      .channel('attendance-logs-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'attendance_logs' },
+        () => {
+          loadData(startDate, endDate);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [startDate, endDate]);
+
+  const handlePresetChange = (value: string) => {
+    if (value === "custom") {
+      setPreset(value);
+      return;
+    }
+    setPreset(value);
+    const today = new Date();
+    let newStart = subDays(today, 13);
+    let newEnd = today;
+
+    if (value === "today") {
+      newStart = today;
+      newEnd = today;
+    } else if (value === "yesterday") {
+      newStart = subDays(today, 1);
+      newEnd = subDays(today, 1);
+    } else if (value === "7days") {
+      newStart = subDays(today, 6);
+      newEnd = today;
+    } else if (value === "14days") {
+      newStart = subDays(today, 13);
+      newEnd = today;
+    } else if (value === "30days") {
+      newStart = subDays(today, 29);
+      newEnd = today;
+    } else if (value === "this_month") {
+      newStart = startOfMonth(today);
+      newEnd = today;
+    }
+
+    setStartDate(format(newStart, 'yyyy-MM-dd'));
+    setEndDate(format(newEnd, 'yyyy-MM-dd'));
+  };
+
+  const handleStartDateChange = (val: string) => {
+    if (!val) return;
+    setPreset("custom");
+    
+    try {
+      const start = parseISO(val);
+      const end = parseISO(endDate);
+      const diff = differenceInDays(end, start);
+      if (diff < 0) {
+        setStartDate(val);
+        setEndDate(val);
+      } else if (diff >= 31) {
+        toast.warning("Date range limited to maximum 31 days. Adjusted End Date.");
+        setStartDate(val);
+        setEndDate(format(addDays(start, 30), 'yyyy-MM-dd'));
+      } else {
+        setStartDate(val);
+      }
+    } catch (e) {
+      setStartDate(val);
+    }
+  };
+
+  const handleEndDateChange = (val: string) => {
+    if (!val) return;
+    setPreset("custom");
+
+    try {
+      const start = parseISO(startDate);
+      const end = parseISO(val);
+      const diff = differenceInDays(end, start);
+      if (diff < 0) {
+        setEndDate(val);
+        setStartDate(val);
+      } else if (diff >= 31) {
+        toast.warning("Date range limited to maximum 31 days. Adjusted Start Date.");
+        setEndDate(val);
+        setStartDate(format(subDays(end, 30), 'yyyy-MM-dd'));
+      } else {
+        setEndDate(val);
+      }
+    } catch (e) {
+      setEndDate(val);
+    }
+  };
 
   const handlePunch = async () => {
     if (!userId || !companyId) return toast.error("User or Company ID missing");
@@ -101,7 +217,7 @@ export default function Attendance() {
         if (error) throw error;
         toast.success("Successfully Punched Out!");
       }
-      await loadData(); // Reload
+      await loadData(startDate, endDate); // Reload
     } catch (e: any) {
       toast.error(e.message || "Failed to record attendance");
     } finally {
@@ -115,13 +231,52 @@ export default function Attendance() {
         title="Attendance" 
         description="Track team presence and punch in for the day" 
         breadcrumbs={[{ label: "Employees" }, { label: "Attendance" }]} 
-        actions={<EsslUploader employees={employees} onUploadComplete={loadData} />}
+        actions={<EsslUploader employees={employees} onUploadComplete={() => loadData(startDate, endDate)} />}
       />
       
-      
+      {/* Date Range Selector Toolbar */}
+      <div className="flex flex-wrap items-center gap-4 bg-card p-4 rounded-xl border shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Presets:</span>
+          <Select value={preset} onValueChange={handlePresetChange}>
+            <SelectTrigger className="w-[140px] h-9 bg-background">
+              <SelectValue placeholder="Select preset" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="yesterday">Yesterday</SelectItem>
+              <SelectItem value="7days">Last 7 Days</SelectItem>
+              <SelectItem value="14days">Last 14 Days</SelectItem>
+              <SelectItem value="30days">Last 30 Days</SelectItem>
+              <SelectItem value="this_month">This Month</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">From:</span>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => handleStartDateChange(e.target.value)}
+              className="w-[140px] h-9 bg-background text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">To:</span>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => handleEndDateChange(e.target.value)}
+              className="w-[140px] h-9 bg-background text-sm"
+            />
+          </div>
+        </div>
+      </div>
 
-      {/* Live Team Presence (Today) Dashboard */}
+      {/* Live Team Presence Dashboard */}
       <div className="space-y-3 bg-card p-6 rounded-xl border shadow-sm">
         <div>
           <h3 className="text-lg font-semibold tracking-tight flex items-center gap-2">
@@ -129,19 +284,21 @@ export default function Attendance() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            Live Team Presence (Today)
+            Team Presence ({endDate === format(new Date(), 'yyyy-MM-dd') ? 'Today' : format(parseISO(endDate), 'MMM dd, yyyy')})
           </h3>
-          <p className="text-sm text-muted-foreground mt-0.5">Real-time biometric punch status of employees for today</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Biometric punch status of employees for {endDate === format(new Date(), 'yyyy-MM-dd') ? 'today' : format(parseISO(endDate), 'MMM dd, yyyy')}
+          </p>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-            <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading live status...
+            <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading status...
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {employees.map((emp) => {
-              const todayStr = format(new Date(), 'yyyy-MM-dd');
+              const todayStr = endDate;
               const log = attendanceData[emp.id]?.[todayStr];
               
               let statusBadge = (
@@ -228,9 +385,9 @@ export default function Attendance() {
             <table className="w-full text-sm">
               <thead><tr className="border-b border-border">
                 <th className="text-left text-xs uppercase font-medium text-muted-foreground px-3 py-2">Employee</th>
-                {past14Days.map((dateStr) => (
+                {daysInRange.map((dateStr) => (
                   <th key={dateStr} className="text-center text-xs font-medium text-muted-foreground px-1 py-2">
-                    {format(new Date(dateStr), 'dd')}
+                    {format(parseISO(dateStr), 'dd')}
                   </th>
                 ))}
                 <th className="text-right text-xs uppercase font-medium text-muted-foreground px-3 py-2">%</th>
@@ -240,30 +397,42 @@ export default function Attendance() {
                   const empLogs = attendanceData[e.id] || {};
                   
                   let presentCount = 0;
-                  const dayElements = past14Days.map(dateStr => {
+                  const dayElements = daysInRange.map(dateStr => {
                     const log = empLogs[dateStr];
                     const status = log?.status;
-                    let color = "bg-muted"; 
                     
-                    if (status === 'present') { color = "bg-success"; presentCount += 1; }
-                    else if (status === 'absent') { color = "bg-destructive"; }
-                    else if (status === 'half_day') { color = "bg-warning"; presentCount += 0.5; }
-                    else if (status === 'on_leave') { color = "bg-info"; }
+                    if (status === 'present') { presentCount += 1; }
+                    else if (status === 'half_day') { presentCount += 0.5; }
 
-                    const clockInStr = log?.clock_in ? format(new Date(log.clock_in), 'hh:mm a') : '--:--';
-                    const clockOutStr = log?.clock_out ? format(new Date(log.clock_out), 'hh:mm a') : '--:--';
+                    const clockInStr = log?.clock_in ? format(new Date(log.clock_in), 'hh:mm a') : null;
+                    const clockOutStr = log?.clock_out ? format(new Date(log.clock_out), 'hh:mm a') : null;
                     const tooltip = status 
-                      ? `${format(new Date(dateStr), 'MMM dd')} - ${status.toUpperCase()}\nIn: ${clockInStr}\nOut: ${clockOutStr}`
-                      : `${format(new Date(dateStr), 'MMM dd')}: No Record`;
+                      ? `${format(parseISO(dateStr), 'MMM dd')} - ${status.toUpperCase()}\nIn: ${clockInStr || '--:--'}\nOut: ${clockOutStr || '--:--'}`
+                      : `${format(parseISO(dateStr), 'MMM dd')}: No Record`;
 
                     return (
-                      <td key={dateStr} className="text-center px-1 py-2" title={tooltip}>
-                        <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
+                      <td key={dateStr} className="text-center px-1 py-1.5" title={tooltip}>
+                        {log ? (
+                          <div className="inline-flex flex-col items-center justify-center gap-0.5 min-w-[65px] py-1 px-1.5 rounded bg-muted/40 border border-border/40 text-[9px] font-medium leading-none">
+                            {clockInStr ? (
+                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{clockInStr}</span>
+                            ) : (
+                              <span className="text-muted-foreground/40">--:--</span>
+                            )}
+                            {clockOutStr ? (
+                              <span className="text-blue-600 dark:text-blue-400 font-semibold">{clockOutStr}</span>
+                            ) : (
+                              <span className="text-muted-foreground/40">--:--</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/30 text-xs font-normal">—</span>
+                        )}
                       </td>
                     );
                   });
 
-                  const pct = Math.round((presentCount / 14) * 100);
+                  const pct = daysInRange.length > 0 ? Math.round((presentCount / daysInRange.length) * 100) : 0;
 
                   return (
                     <tr key={e.id} className="border-b last:border-0 border-border hover:bg-muted/30">
@@ -278,7 +447,7 @@ export default function Attendance() {
                 })}
                 {employees.length === 0 && (
                   <tr>
-                    <td colSpan={16} className="text-center py-8 text-muted-foreground">No approved employees found.</td>
+                    <td colSpan={daysInRange.length + 2} className="text-center py-8 text-muted-foreground">No approved employees found.</td>
                   </tr>
                 )}
               </tbody>

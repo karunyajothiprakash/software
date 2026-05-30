@@ -1,7 +1,16 @@
+import sys
 import time
 import datetime
 from zk import ZK, const
 import pymssql
+
+# Reconfigure stdout for UTF-8 to prevent emoji print crashes on Windows terminal
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
+
 
 # 1. Configuration
 DEVICE_IP = '192.168.1.201'

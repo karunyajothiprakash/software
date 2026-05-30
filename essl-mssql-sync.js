@@ -162,8 +162,14 @@ async function runSync() {
       group.times.sort((a, b) => a - b);
       
       const clockIn = group.times[0];
-      // Clock out is the latest punch, only if it's different from clock in
-      const clockOut = group.times.length > 1 ? group.times[group.times.length - 1] : null;
+      // and at least 15 minutes (900000 ms) after the clock in to prevent double-punch/testing errors
+      let clockOut = null;
+      if (group.times.length > 1) {
+        const lastPunch = group.times[group.times.length - 1];
+        if (lastPunch.getTime() - clockIn.getTime() >= 15 * 60 * 1000) {
+          clockOut = lastPunch;
+        }
+      }
 
       const clockInIso = clockIn.toISOString();
       const clockOutIso = clockOut ? clockOut.toISOString() : null;

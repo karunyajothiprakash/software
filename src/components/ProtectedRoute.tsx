@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 export function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { session, profile, loading, refresh, roleSlugs } = useAuth();
@@ -37,6 +38,15 @@ export function ProtectedRoute({ children }: { children: JSX.Element }) {
         <div className="flex flex-col items-center">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
           <p className="mt-4 text-sm text-muted-foreground animate-pulse">Setting up your account...</p>
+          <button 
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.href = "/auth";
+            }} 
+            className="mt-6 text-xs text-primary hover:underline transition-all cursor-pointer font-medium"
+          >
+            Sign Out / Switch Account
+          </button>
         </div>
       </div>
     );
