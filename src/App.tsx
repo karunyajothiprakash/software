@@ -85,6 +85,7 @@ import StockDashboard from "./pages/inventory/StockDashboard";
 import StockMovements from "./pages/inventory/StockMovements";
 import Warehouses from "./pages/inventory/Warehouses";
 import LowStockAlerts from "./pages/inventory/LowStockAlerts";
+import DamagedStock from "./pages/inventory/DamagedStock";
 
 // Quotations
 import QuotationsList from "./pages/quotations/QuotationsList";
@@ -239,6 +240,7 @@ const App = () => (
               <Route path="/inventory/movements" element={<StockMovements />} />
               <Route path="/inventory/warehouses" element={<Warehouses />} />
               <Route path="/inventory/alerts" element={<LowStockAlerts />} />
+              <Route path="/inventory/damaged" element={<DamagedStock />} />
 
               {/* Quotations */}
               <Route path="/quotations" element={<QuotationsList />} />

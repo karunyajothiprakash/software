@@ -128,6 +128,7 @@ export const navGroups: NavGroup[] = [
       { title: "Add Product", url: "/inventory/products/create", icon: PackagePlus, permission: "inventory.manage" },
       { title: "Stock Movements", url: "/inventory/movements", icon: History },
       { title: "Warehouses", url: "/inventory/warehouses", icon: Warehouse },
+      { title: "Damaged Stock", url: "/inventory/damaged", icon: AlertCircle },
       { title: "Low Stock Alerts", url: "/inventory/alerts", icon: AlertTriangle },
     ],
   },
