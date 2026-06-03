@@ -26,6 +26,8 @@ type AuthCtx = {
   roleSlugs: Set<string>;
   loading: boolean;
   onlineUsers: string[];
+  activeMinutes: number;
+  idleMinutes: number;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -41,7 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const lastActivityRef = useRef<Date>(new Date());
+  const [activeMinutes, setActiveMinutes] = useState(0);
+  const [idleMinutes, setIdleMinutes] = useState(0);
+  const lastActivityRef = useRef<number>(Date.now());
   const currentSessionIdRef = useRef<string | null>(null);
   const [isIdle, setIsIdle] = useState(false);
 
@@ -49,11 +53,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
-
-  const handleUserActivity = () => {
-    lastActivityRef.current = new Date();
-    if (isIdle) setIsIdle(false);
-  };
 
   // Track activity separate from the main auth useEffect
   useEffect(() => {
@@ -64,11 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.log('Starting session tracking interval...');
 
+    const handleUserActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
     const interval = setInterval(async () => {
-      const now = new Date();
-      const idleThreshold = 5 * 60 * 1000; // 5 minutes
-      const idleTime = now.getTime() - lastActivityRef.current.getTime();
-      const currentlyIdle = idleTime >= idleThreshold;
+      const timeSinceLastActivity = Date.now() - lastActivityRef.current;
+      const currentlyIdle = timeSinceLastActivity >= 60000;
       
       setIsIdle(currentlyIdle);
 
@@ -79,6 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select('active_minutes, idle_minutes')
           .eq('user_id', session.user.id)
           .is('logout_time', null)
+          .order('login_time', { ascending: false })
+          .limit(1)
           .maybeSingle();
           
         if (fetchErr) {
@@ -91,21 +94,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const newIdle = currentlyIdle ? (currentSess.idle_minutes || 0) + 1 : (currentSess.idle_minutes || 0);
 
           const updateData: any = {
-            last_activity: now.toISOString(),
             active_minutes: newActive,
             idle_minutes: newIdle
           };
           
-          console.log('Updating session...', newActive, newIdle);
+          if (!currentlyIdle) {
+            updateData.last_activity = new Date().toISOString();
+          }
+          
+          console.log('Attempting session update...', {
+            userId: session.user.id,
+            activeMinutes: newActive,
+            idleMinutes: newIdle,
+            isIdle: currentlyIdle
+          });
 
-          const { error: updateErr } = await (supabase
+          const { data, error: updateErr } = await (supabase
             .from('user_sessions' as any) as any)
             .update(updateData)
             .eq('user_id', session.user.id)
-            .is('logout_time', null);
+            .is('logout_time', null)
+            .select();
+
+          console.log('Update result:', data, updateErr);
 
           if (updateErr) {
-            console.error('Session timer: Error updating minutes', updateErr);
+            console.log('Session update error:', updateErr);
+          } else if (data && data.length > 0) {
+            setActiveMinutes(data[0].active_minutes || 0);
+            setIdleMinutes(data[0].idle_minutes || 0);
+          } else {
+            setActiveMinutes(newActive);
+            setIdleMinutes(newIdle);
           }
         } else {
           console.log('Session timer pulse: No active session found to update for this user');
@@ -118,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Activity listeners
     window.addEventListener('mousemove', handleUserActivity);
     window.addEventListener('keydown', handleUserActivity);
-    window.addEventListener('click', handleUserActivity);
+    window.addEventListener('mousedown', handleUserActivity);
     window.addEventListener('scroll', handleUserActivity);
 
     return () => {
@@ -126,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(interval);
       window.removeEventListener('mousemove', handleUserActivity);
       window.removeEventListener('keydown', handleUserActivity);
-      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('mousedown', handleUserActivity);
       window.removeEventListener('scroll', handleUserActivity);
     };
   }, [session?.user]);
@@ -191,6 +211,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .maybeSingle();
 
     if (existing) {
+      await (supabase
+        .from('user_sessions' as any) as any)
+        .update({ login_time: new Date().toISOString() })
+        .eq('id', existing.id);
+        
       setCurrentSessionId(existing.id);
       return;
     }
@@ -204,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           login_time: new Date().toISOString()
         })
         .select('id')
-        .single();
+        .maybeSingle();
       
       if (!error && data) {
         setCurrentSessionId((data as any).id);
@@ -284,8 +309,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         )
         .subscribe();
 
-      // Realtime Presence for Online Status
-      presenceChannel = supabase.channel(`online-users-${rand}`, {
+      // Realtime Presence for Online Status - use a constant channel name for all users
+      presenceChannel = supabase.channel('global-presence', {
         config: { presence: { key: uid } }
       });
       
@@ -365,7 +390,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ session, user: session?.user ?? null, profile, permissions, roleSlugs, loading, onlineUsers, signOut, refresh }}>
+    <Ctx.Provider value={{ session, user: session?.user ?? null, profile, permissions, roleSlugs, loading, onlineUsers, activeMinutes, idleMinutes, signOut, refresh }}>
       {children}
     </Ctx.Provider>
   );
@@ -386,6 +411,8 @@ export function useAuth() {
       roleSlugs: new Set<string>(),
       loading: true,
       onlineUsers: [],
+      activeMinutes: 0,
+      idleMinutes: 0,
       signOut: async () => {},
       refresh: async () => {},
     } as AuthCtx;
