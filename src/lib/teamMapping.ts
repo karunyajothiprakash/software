@@ -9,7 +9,7 @@ export function inferTeamFromActorName(name?: string): string | undefined {
   const normalized = normalizeActorName(name);
   if (!normalized) return undefined;
 
-  if (normalized.includes("gayathri") || normalized.includes("kaviya")) {
+  if (normalized.includes("gayathri")) {
     return "BDE";
   }
 

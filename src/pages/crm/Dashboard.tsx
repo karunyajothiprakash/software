@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { Target, Bell, CheckCircle2, DollarSign, TrendingUp } from "lucide-react";
+import { useMemo } from "react";
+import { Target, Bell, CheckCircle2, DollarSign, TrendingUp, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { format, parseISO, startOfMonth, subMonths } from "date-fns";
 
 const COLORS = {
   bg: "#0a0c10",
@@ -23,32 +26,6 @@ const COLORS = {
   textMuted: "#484f58",
 };
 
-const initialLeads = [
-  { id: "L001", company: "Future Wave Food Trading", country: "UAE", contact: "Ahmad Al-Rashid", email: "ahmad@futurewave.ae", phone: "+971 50 123 4567", product: "Turmeric Powder", status: "Negotiation", value: 85000, assignee: "Swathi", date: "2026-05-01", followUp: "2026-06-02" },
-  { id: "L002", company: "Sea Horse Pvt Ltd", country: "Australia", contact: "James Carter", email: "james@seahorse.com.au", phone: "+61 2 9876 5432", product: "Coconut Oil", status: "New", value: 12000, assignee: "Rajesh", date: "2026-05-10", followUp: "2026-06-01" },
-  { id: "L003", company: "OrganicLife GmbH", country: "Germany", contact: "Klaus Weber", email: "k.weber@organiclife.de", phone: "+49 89 456 789", product: "Pepper Spices", status: "Qualified", value: 45000, assignee: "Priya", date: "2026-05-12", followUp: "2026-05-30" },
-  { id: "L004", company: "Greenfield Traders", country: "UK", contact: "Sarah Mitchell", email: "sarah@greenfield.co.uk", phone: "+44 20 7946 0958", product: "Basmati Rice", status: "Closed Won", value: 120000, assignee: "Swathi", date: "2026-04-20", followUp: null },
-  { id: "L005", company: "NaturalBest Co.", country: "Canada", contact: "Marc Dupont", email: "marc@naturalbest.ca", phone: "+1 416 555 0192", product: "Cumin Seeds", status: "Follow-Up", value: 28000, assignee: "Rajesh", date: "2026-05-15", followUp: "2026-05-31" },
-  { id: "L006", company: "Spice Kingdom LLC", country: "USA", contact: "Robert King", email: "robert@spicekingdom.com", phone: "+1 212 555 0111", product: "Cardamom", status: "New", value: 67000, assignee: "Priya", date: "2026-05-18", followUp: "2026-06-05" },
-  { id: "L007", company: "EastWest Imports", country: "Singapore", contact: "Li Wei", email: "liwei@eastwest.sg", phone: "+65 9123 4567", product: "Chilli Powder", status: "Closed Lost", value: 34000, assignee: "Swathi", date: "2026-04-10", followUp: null },
-];
-
-const initialEmployees = [
-  { id: "E001", name: "Swathi Swathi", role: "Senior BDE", email: "swathi@shastika.com", leads: 24, calls: 87, deals: 8, revenue: 485000, target: 500000, status: "Online", ip: "192.168.1.101", device: "MacBook Pro", login: "09:02 AM", idle: "0m", location: "Chennai" },
-  { id: "E002", name: "Rajesh Kumar", role: "BDE", email: "rajesh@shastika.com", leads: 18, calls: 64, deals: 5, revenue: 320000, target: 400000, status: "Online", ip: "10.0.0.45", device: "Windows PC", login: "09:15 AM", idle: "12m", location: "Tiruppur" },
-  { id: "E003", name: "Priya Nair", role: "BDE", email: "priya@shastika.com", leads: 21, calls: 72, deals: 6, revenue: 410000, target: 450000, status: "Idle", ip: "172.16.0.22", device: "MacBook Air", login: "09:30 AM", idle: "28m", location: "Coimbatore" },
-  { id: "E004", name: "Arjun Menon", role: "Junior BDE", email: "arjun@shastika.com", leads: 11, calls: 38, deals: 2, revenue: 145000, target: 300000, status: "Offline", ip: "—", device: "—", login: "—", idle: "—", location: "Remote" },
-];
-
-const activityLogs = [
-  { time: "09:45 AM", user: "Swathi", action: "Updated lead status", detail: "Future Wave → Negotiation", type: "lead" },
-  { time: "09:32 AM", user: "Rajesh", action: "Created quotation", detail: "Sea Horse Pvt Ltd - AUD 0", type: "quote" },
-  { time: "09:18 AM", user: "Priya", action: "Logged call", detail: "OrganicLife GmbH - 12 min", type: "call" },
-  { time: "09:05 AM", user: "Swathi", action: "Sent email", detail: "Future Wave Food Trading", type: "email" },
-  { time: "08:50 AM", user: "Rajesh", action: "Scheduled follow-up", detail: "NaturalBest Co. - May 31", type: "followup" },
-  { time: "08:30 AM", user: "Swathi", action: "Login detected", detail: "IP: 192.168.1.101 | Chennai", type: "security" },
-];
-
 const Badge = ({ label, color = COLORS.accent }) => (
   <span style={{ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
     {label}
@@ -56,7 +33,22 @@ const Badge = ({ label, color = COLORS.accent }) => (
 );
 
 const statusColor = (s) => {
-  const map = { "New": COLORS.blue, "Qualified": COLORS.purple, "Negotiation": COLORS.gold, "Follow-Up": COLORS.orange, "Closed Won": COLORS.green, "Closed Lost": COLORS.red, "Draft": COLORS.textSecondary, "Sent": COLORS.blue, "Approved": COLORS.green, "Online": COLORS.green, "Idle": COLORS.gold, "Offline": COLORS.textMuted };
+  const map = {
+    "New": COLORS.blue,
+    "Qualified": COLORS.purple,
+    "Negotiation": COLORS.gold,
+    "Follow-Up": COLORS.orange,
+    "Closed Won": COLORS.green,
+    "closed_won": COLORS.green,
+    "Closed Lost": COLORS.red,
+    "closed_lost": COLORS.red,
+    "Draft": COLORS.textSecondary,
+    "Sent": COLORS.blue,
+    "Approved": COLORS.green,
+    "Online": COLORS.green,
+    "Idle": COLORS.gold,
+    "Offline": COLORS.textMuted
+  };
   return map[s] || COLORS.textSecondary;
 };
 
@@ -66,8 +58,8 @@ const Card = ({ children, style = {} }) => (
   </div>
 );
 
-const MetricCard = ({ label, value, sub, color = COLORS.accent, icon }) => (
-  <Card style={{ flex: 1, minWidth: 140 }}>
+const MetricCard = ({ label, value, sub, color = COLORS.accent, icon, onClick }) => (
+  <Card style={{ flex: 1, minWidth: 140, cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
       <div>
         <div style={{ fontSize: 11, color: COLORS.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
@@ -87,7 +79,7 @@ const SectionHeader = ({ title, sub }) => (
 );
 
 const ProgressBar = ({ value, max, color = COLORS.accent }) => {
-  const pct = Math.min(100, Math.round((value / max) * 100));
+  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
     <div style={{ width: "100%", background: COLORS.border, borderRadius: 4, height: 6, marginTop: 6 }}>
       <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s" }} />
@@ -96,32 +88,170 @@ const ProgressBar = ({ value, max, color = COLORS.accent }) => {
 };
 
 function Dashboard() {
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-  const revenueData = [280000, 340000, 295000, 410000, 485000, 520000];
-  const maxRev = Math.max(...revenueData);
+  // 1. Leads Query (Total, Closed Won, Status Breakdown)
+  const { data: leads = [], isLoading: isLoadingLeads } = useQuery({
+    queryKey: ["crm_dashboard_leads"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("leads").select("stage");
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
+  // 2. Activities & Follow-Ups Query
+  const { data: activitiesData, isLoading: isLoadingActivities } = useQuery({
+    queryKey: ["crm_dashboard_activities"],
+    queryFn: async () => {
+      const [{ data: activitiesList }, { data: recent }, { data: followUps }] = await Promise.all([
+        supabase.from("activities").select("completed, due_date").limit(100),
+        supabase.from("activities").select("type, title, created_at, leads(company_name)").order("created_at", { ascending: false }).limit(5),
+        supabase.from("follow_ups").select("is_notified, follow_up_date").eq("is_notified", false)
+      ]);
+      
+      return { 
+        pending: (activitiesList || []).filter((a: any) => a.completed !== true),
+        followUps: followUps || [],
+        recent: recent || [] 
+      };
+    }
+  });
+
+  // 3. Quotations & Orders Query
+  const { data: quotationsData, isLoading: isLoadingQuotations } = useQuery({
+    queryKey: ["crm_dashboard_quotations"],
+    queryFn: async () => {
+      const [quotesRes, profilesRes, leadsRes, ordersRes] = await Promise.all([
+        supabase.from("quotations").select("total_amount, amount, status, created_at, lead_id"),
+        supabase.from("profiles").select("id, full_name"),
+        supabase.from("leads").select("id, assigned_to"),
+        supabase.from("export_orders").select("id, status")
+      ]);
+
+      return { 
+        approved: quotesRes.data || [], 
+        profiles: profilesRes.data || [],
+        leads: leadsRes.data || [],
+        orders: ordersRes.data || []
+      };
+    }
+  });
+
+  const isLoading = isLoadingLeads || isLoadingActivities || isLoadingQuotations;
+
+  // --- Process Stats ---
+  const totalLeads = leads.length;
+  // Use export_orders as the source of truth for closed deals besides won leads
+  const wonLeadsCount = leads.filter(l => ['won', 'closed_won', 'Closed Won', 'closed', 'Won'].includes(l.stage)).length;
+  const closedOrdersCount = quotationsData?.orders?.length || 0;
+  const closedWonLeads = Math.max(wonLeadsCount, closedOrdersCount);
+  const conversionRate = totalLeads > 0 ? Math.round((closedWonLeads / totalLeads) * 100) : 0;
+
+  const pendingActivitiesList = activitiesData?.pending || [];
+  const pendingFollowUps = activitiesData?.followUps || [];
+  const totalPending = pendingActivitiesList.length + pendingFollowUps.length;
+  const now = new Date();
+  const overdueActivities = pendingActivitiesList.filter(a => a.due_date && new Date(a.due_date) < now).length;
+
+  const approvedQuotes = quotationsData?.approved || [];
+  const totalRevenue = approvedQuotes.reduce((sum, q: any) => {
+    // total_amount is often 0 in the current data, so we use amount as a reliable fallback
+    const val = Number(q.total_amount) || Number(q.amount) || 0;
+    return sum + val;
+  }, 0);
+  const revenueFormatted = totalRevenue >= 1000000 
+    ? `$${(totalRevenue / 1000000).toFixed(2)}M` 
+    : `$${(totalRevenue / 1000).toFixed(1)}K`;
+
+  // --- Process Trend Chart (Last 6 Months) ---
+  const trendData = useMemo(() => {
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      months.push({
+        label: format(subMonths(startOfMonth(new Date()), i), "MMM"),
+        date: subMonths(startOfMonth(new Date()), i),
+        value: 0
+      });
+    }
+
+    approvedQuotes.forEach((q: any) => {
+      const qDate = parseISO(q.created_at);
+      const qStart = startOfMonth(qDate);
+      const monthIdx = months.findIndex(m => m.date.getTime() === qStart.getTime());
+      if (monthIdx !== -1) {
+        const val = Number(q.total_amount) || Number(q.amount) || 0;
+        months[monthIdx].value += val;
+      }
+    });
+
+    return months;
+  }, [approvedQuotes]);
+
+  const maxRevTrend = Math.max(...trendData.map(m => m.value), 1);
+
+  // --- Process Status Breakdown ---
+  const statusBreakdown = useMemo(() => {
+    const counts: { [key: string]: number } = {};
+    leads.forEach(l => {
+      const s = l.stage || "Unknown";
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [leads]);
+
+  // --- Process Employee Performance ---
+  const performanceData = useMemo(() => {
+    const perf: { [key: string]: number } = {};
+    
+    // Group approved quotations by assigned_to (via leads)
+    quotationsData?.approved?.forEach((q: any) => {
+      const lead = quotationsData.leads.find(l => l.id === q.lead_id);
+      if (lead?.assigned_to) {
+        // Find profile id by matching assigned_to (could be ID or Name)
+        const profile = quotationsData.profiles.find(p => 
+          p.id === lead.assigned_to || p.full_name === lead.assigned_to
+        );
+        
+        const displayName = profile?.full_name || lead.assigned_to;
+        const val = Number(q.total_amount) || Number(q.amount) || 0;
+        perf[displayName] = (perf[displayName] || 0) + val;
+      }
+    });
+
+    return Object.entries(perf)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [quotationsData]);
+
+  if (isLoading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "400px" }}>
+        <Loader2 className="animate-spin text-primary" size={48} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ animation: "fadeIn 0.3s ease" }}>
       <SectionHeader title="CRM Dashboard" sub="Shastika Global Impex — Agri Export ERP Overview" />
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-        <MetricCard label="Total Leads" value="75" sub="+12 this month" color={COLORS.blue} icon={<Target size={22} color={COLORS.blue} />} />
-        <MetricCard label="Pending Follow-Ups" value="18" sub="5 overdue" color={COLORS.orange} icon={<Bell size={22} color={COLORS.orange} />} />
-        <MetricCard label="Closed Deals" value="21" sub="This quarter" color={COLORS.green} icon={<CheckCircle2 size={22} color={COLORS.green} />} />
-        <MetricCard label="Revenue (USD)" value="$1.36M" sub="vs $1.1M last quarter" color={COLORS.accent} icon={<DollarSign size={22} color={COLORS.accent} />} />
-        <MetricCard label="Conversion Rate" value="28%" sub="+4% vs last month" color={COLORS.purple} icon={<TrendingUp size={22} color={COLORS.purple} />} />
+        <MetricCard label="Total Leads" value={totalLeads.toString()} sub="Aggregated from live data" color={COLORS.blue} icon={<Target size={22} color={COLORS.blue} />} onClick={() => window.location.href = "/crm/leads"} />
+        <MetricCard label="Pending Follow-Ups" value={totalPending.toString()} sub={`${overdueActivities} overdue`} color={COLORS.orange} icon={<Bell size={22} color={COLORS.orange} />} onClick={() => window.location.href = "/crm/activities"} />
+        <MetricCard label="Closed Deals" value={closedWonLeads.toString()} sub="Total Closed Won" color={COLORS.green} icon={<CheckCircle2 size={22} color={COLORS.green} />} onClick={() => window.location.href = "/crm/leads"} />
+        <MetricCard label="Revenue (USD)" value={revenueFormatted} sub="Total approved quotations" color={COLORS.accent} icon={<DollarSign size={22} color={COLORS.accent} />} />
+        <MetricCard label="Conversion Rate" value={`${conversionRate}%`} sub="Won vs Total Leads" color={COLORS.purple} icon={<TrendingUp size={22} color={COLORS.purple} />} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
         <Card>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 16, color: COLORS.textSecondary }}>MONTHLY REVENUE TREND</div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 100 }}>
-            {revenueData.map((v, i) => (
+            {trendData.map((m, i) => (
               <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <div style={{ width: "100%", background: i === 4 ? COLORS.accent : COLORS.blue + "55", borderRadius: "4px 4px 0 0", height: `${(v / maxRev) * 90}px`, transition: "height 0.5s", position: "relative" }}>
-                  {i === 4 && <div style={{ position: "absolute", top: -18, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: COLORS.accent, whiteSpace: "nowrap", fontFamily: "JetBrains Mono, monospace" }}>$485K</div>}
+                <div style={{ width: "100%", background: i === trendData.length - 1 ? COLORS.accent : COLORS.blue + "55", borderRadius: "4px 4px 0 0", height: `${(m.value / maxRevTrend) * 90}px`, transition: "height 0.5s", position: "relative" }}>
+                  {m.value > 0 && <div style={{ position: "absolute", top: -18, left: "50%", transform: "translateX(-50%)", fontSize: 9, color: COLORS.accent, whiteSpace: "nowrap", fontFamily: "JetBrains Mono, monospace" }}>${(m.value / 1000).toFixed(0)}K</div>}
                 </div>
-                <span style={{ fontSize: 10, color: COLORS.textMuted }}>{months[i]}</span>
+                <span style={{ fontSize: 10, color: COLORS.textMuted }}>{m.label}</span>
               </div>
             ))}
           </div>
@@ -129,16 +259,17 @@ function Dashboard() {
 
         <Card>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14, color: COLORS.textSecondary }}>LEAD STATUS BREAKDOWN</div>
-          {["New", "Qualified", "Negotiation", "Follow-Up", "Closed Won", "Closed Lost"].map((s) => {
-            const color = statusColor(s);
-            const count = initialLeads.filter(l => l.status === s).length;
+          {statusBreakdown.length === 0 ? (
+            <div style={{ fontSize: 12, color: COLORS.textMuted, py: 4 }}>No lead data available</div>
+          ) : statusBreakdown.map(([status, count]) => {
+            const color = statusColor(status);
             return (
-              <div key={s} style={{ marginBottom: 8 }}>
+              <div key={status} style={{ marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
-                  <span style={{ color: COLORS.textSecondary }}>{s}</span>
+                  <span style={{ color: COLORS.textSecondary, textTransform: "capitalize" }}>{status.replace("_", " ")}</span>
                   <span style={{ color, fontFamily: "JetBrains Mono, monospace" }}>{count}</span>
                 </div>
-                <ProgressBar value={count} max={initialLeads.length} color={color} />
+                <ProgressBar value={count} max={totalLeads} color={color} />
               </div>
             );
           })}
@@ -148,28 +279,34 @@ function Dashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Card>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14, color: COLORS.textSecondary }}>EMPLOYEE PERFORMANCE</div>
-          {initialEmployees.map(e => (
-            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          {performanceData.length === 0 ? (
+            <div style={{ fontSize: 12, color: COLORS.textMuted, py: 4 }}>No performance data available</div>
+          ) : performanceData.map(([name, revenue]) => (
+            <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
               <div style={{ width: 32, height: 32, borderRadius: "50%", background: COLORS.accentDim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: COLORS.accent, flexShrink: 0 }}>
-                {e.name.split(" ").map(n => n[0]).join("")}
+                {name.split(" ").map(n => n[0]).join("")}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{e.name}</div>
-                <ProgressBar value={e.revenue} max={e.target} color={e.revenue >= e.target * 0.9 ? COLORS.green : e.revenue >= e.target * 0.7 ? COLORS.gold : COLORS.orange} />
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{name}</div>
+                <ProgressBar value={revenue} max={Math.max(...performanceData.map(p => p[1]))} color={revenue > 0 ? COLORS.green : COLORS.orange} />
               </div>
-              <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: COLORS.textSecondary, flexShrink: 0 }}>${(e.revenue / 1000).toFixed(0)}K</span>
+              <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: COLORS.textSecondary, flexShrink: 0 }}>${(revenue / 1000).toFixed(0)}K</span>
             </div>
           ))}
         </Card>
 
         <Card>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14, color: COLORS.textSecondary }}>RECENT ACTIVITY</div>
-          {activityLogs.slice(0, 5).map((a, i) => (
+          {(activitiesData?.recent || []).length === 0 ? (
+            <div style={{ fontSize: 12, color: COLORS.textMuted, py: 4 }}>No recent activity</div>
+          ) : (activitiesData?.recent || []).map((a, i) => (
             <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: "JetBrains Mono, monospace", minWidth: 52, paddingTop: 2 }}>{a.time}</span>
+              <span style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: "JetBrains Mono, monospace", minWidth: 52, paddingTop: 2 }}>
+                {format(parseISO(a.created_at), "hh:mm a")}
+              </span>
               <div style={{ flex: 1, borderLeft: `2px solid ${COLORS.border}`, paddingLeft: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 500 }}>{a.action}</div>
-                <div style={{ fontSize: 11, color: COLORS.textSecondary }}>{a.detail}</div>
+                <div style={{ fontSize: 12, fontWeight: 500, textTransform: "capitalize" }}>{a.type} - {(a.leads as any)?.company_name || "Internal"}</div>
+                <div style={{ fontSize: 11, color: COLORS.textSecondary }}>{a.title || "No notes provided"}</div>
               </div>
             </div>
           ))}

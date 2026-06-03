@@ -35,7 +35,7 @@ export default function ConvertQuotation() {
       // Production Filter: Exclude demo/test names
       const demoNames = [
         'abc corporation', 'anamika', 'asmii', 'bunny', 'dhana', 'dove', 
-        'global solutions', 'kalai', 'Gayathri', 'kaviya', 'ram', 
+        'global solutions', 'kalai', 'Gayathri', 'ram', 
         'shastika', 'sneka', 'vinoth', 'vishnu', 'yellow'
       ];
 

@@ -1,21 +1,49 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchBdeProfiles } from "@/lib/bde";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Loader2, Plus, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { Loader2, Plus, Calendar as CalendarIcon, Trash2, Check, ChevronsUpDown, Search as SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/useAuth";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+
+const EXPORT_COUNTRIES = [
+  "Australia", "Thailand", "Indonesia", "Malaysia", "Singapore", "Vietnam", 
+  "UAE", "Saudi Arabia", "Qatar", "Kuwait", "Oman", "Bahrain", 
+  "UK", "Germany", "France", "Netherlands", "Belgium", 
+  "USA", "Canada", "Japan", "South Korea", "China", "India", "Sri Lanka", "Bangladesh", 
+  "New Zealand", "South Africa", "Kenya", "Nigeria", "Egypt", 
+  "Greece", "Italy", "Spain", "Portugal", "Sweden", "Norway", "Denmark", "Finland", 
+  "Poland", "Czech Republic", "Hungary", "Romania", "Bulgaria", "Croatia", "Slovenia", "Slovakia", 
+  "Estonia", "Latvia", "Lithuania", "Other"
+];
 
 type Lead = {
   id: string;
   company_name: string;
+  country?: string | null;
 };
 
 type Activity = {
@@ -50,24 +78,85 @@ export default function LeadActivities() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  const { profile: currentUser, roleSlugs } = useAuth();
+  const [dailyReports, setDailyReports] = useState<any[]>([]);
+  const [bdeMembers, setBdeMembers] = useState<any[]>([]);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+  const isAdminOrManager = useMemo(() => {
+    const slugs = Array.from(roleSlugs || []).map(s => s.toLowerCase());
+    return slugs.includes('admin') || slugs.includes('manager');
+  }, [roleSlugs]);
+
+  const isBDE = useMemo(() => {
+    const slugs = Array.from(roleSlugs || []).map(s => s.toLowerCase());
+    return slugs.includes('bde');
+  }, [roleSlugs]);
+
+  const [reportForm, setReportForm] = useState({
+    report_date: format(new Date(), 'yyyy-MM-dd'),
+    bde_id: '',
+    country: '',
+    total_calls: 0,
+    calls_attended: 0,
+    not_attended_calls: 0,
+    linkedin_messages: 0,
+    emails_sent: 0,
+    new_leads: 0,
+    notes: ''
+  });
+
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [isCountryPopoverOpen, setIsCountryPopoverOpen] = useState(false);
+  const [isLeadsPopoverOpen, setIsLeadsPopoverOpen] = useState(false);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [countrySearch, setCountrySearch] = useState("");
+  const [selectedReport, setSelectedReport] = useState<any>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [reportToDelete, setReportToDelete] = useState<string | null>(null);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+
+  const filteredLeads = useMemo(() => {
+    return leads.filter(l => l.company_name.toLowerCase().includes(leadSearch.toLowerCase()));
+  }, [leads, leadSearch]);
+
+  const availableCountries = useMemo(() => {
+    const countries = leads
+      .map(l => l.country)
+      .filter((c): c is string => !!c && typeof c === 'string');
+    return Array.from(new Set(countries)).sort();
+  }, [leads]);
+
+  const fetchBdeMembers = async () => {
+    try {
+      const filtered = await fetchBdeProfiles(supabase);
+      setBdeMembers(filtered);
+    } catch (err) {
+      console.error("Failed to fetch BDE members:", err);
+    }
+  };
+
   const fetchData = async () => {
     try {
       const [activitiesRes, leadsRes] = await Promise.all([
         supabase
-          .from("activities")
+          .from("activities" as any)
           .select(`id, lead_id, type, title, due_date, completed, leads(company_name)`)
           .order("due_date", { ascending: true }),
         supabase
-          .from("leads")
-          .select("id, company_name")
+          .from("leads" as any)
+          .select("id, company_name, country")
           .order("company_name", { ascending: true })
       ]);
 
       if (activitiesRes.error) throw activitiesRes.error;
       if (leadsRes.error) throw leadsRes.error;
 
+      await fetchBdeMembers();
+
       setActivities(activitiesRes.data as unknown as Activity[]);
-      setLeads(leadsRes.data as Lead[]);
+      setLeads(leadsRes.data as unknown as Lead[]);
     } catch (error: any) {
       toast.error(error.message || "Failed to fetch data");
     } finally {
@@ -77,7 +166,84 @@ export default function LeadActivities() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+    if (isAdminOrManager || isBDE) fetchDailyReports();
+
+    const bdeChannel = supabase
+      .channel("bde-roles-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_roles" }, fetchBdeMembers)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(bdeChannel);
+    };
+  }, [isAdminOrManager, isBDE, currentUser?.id]);
+
+  const handleDeleteReport = async () => {
+    if (!reportToDelete) return;
+    try {
+      const { error } = await supabase.from('bde_daily_reports' as any).delete().eq('id', reportToDelete);
+      if (error) throw error;
+      
+      // Successfully deleted from DB, now remove from local state permanently
+      setDailyReports(prev => prev.filter(r => (r as any).id !== reportToDelete));
+      toast.success("Report deleted successfully");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete report");
+      fetchDailyReports(); // Restore state if server delete failed
+    } finally {
+      setIsConfirmDeleteOpen(false);
+      setReportToDelete(null);
+    }
+  };
+
+
+
+  const fetchDailyReports = async () => {
+    if (!currentUser?.id) return;
+    setLoadingReports(true);
+    try {
+      let query = supabase
+        .from('bde_daily_reports' as any)
+        .select('*');
+      
+      if (!isAdminOrManager && isBDE) {
+        query = query.eq('bde_id', currentUser.id);
+      }
+
+      const { data, error } = await query.order('report_date', { ascending: false });
+      if (error) throw error;
+
+      // Fetch profile names for BDE IDs
+      if (data && data.length > 0) {
+        const bdeIds = Array.from(new Set((data as any[]).map((r: any) => r.bde_id).filter(Boolean)));
+        if (bdeIds.length > 0) {
+          const { data: profiles, error: profileError } = await supabase
+            .from('profiles' as any)
+            .select('id, full_name')
+            .in('id', bdeIds);
+          
+          if (!profileError && profiles) {
+            const profileMap = Object.fromEntries(profiles.map((p: any) => [p.id, p]));
+            const enriched = (data as any[]).map(r => ({
+              ...r,
+              profiles: profileMap[r.bde_id] || null
+            }));
+            setDailyReports(enriched);
+          } else {
+            setDailyReports(data || []);
+          }
+        } else {
+          setDailyReports(data || []);
+        }
+      } else {
+        setDailyReports(data || []);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch reports:", err);
+    } finally {
+      setLoadingReports(false);
+    }
+  };
 
   const handleAddActivity = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,7 +273,7 @@ export default function LeadActivities() {
         finalDueDate = new Date(`${dateStr}T${timeString}`).toISOString();
       }
 
-      const { error } = await supabase.from("activities").insert({
+      const { error } = await supabase.from("activities" as any).insert({
         title,
         type,
         lead_id: finalLeadId,
@@ -137,7 +303,7 @@ export default function LeadActivities() {
   const toggleComplete = async (id: string, currentStatus: boolean) => {
     try {
       const { error } = await supabase
-        .from("activities")
+        .from("activities" as any)
         .update({ completed: !currentStatus })
         .eq("id", id);
 
@@ -157,7 +323,7 @@ export default function LeadActivities() {
   const executeDelete = async () => {
     if (!deleteId) return;
     try {
-      const { error } = await supabase.from("activities").delete().eq("id", deleteId);
+      const { error } = await supabase.from("activities" as any).delete().eq("id", deleteId);
       if (error) throw error;
       toast.success("Activity deleted");
       fetchData();
@@ -172,7 +338,12 @@ export default function LeadActivities() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold tracking-tight">Activities</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold tracking-tight">Activities</h1>
+          <Button variant="outline" size="sm" onClick={() => window.location.href = "/crm/dashboard"}>
+            View Dashboard
+          </Button>
+        </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button><Plus className="mr-2 h-4 w-4" /> Add Activity</Button>
@@ -339,6 +510,422 @@ export default function LeadActivities() {
           setConfirmOpen(false);
           setDeleteId(null);
         }}
+      />
+
+      {/* BDE Daily Reports Section */}
+      {(isBDE || isAdminOrManager) && (
+        <div className="space-y-6 pt-10 border-t border-white/5">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5 text-[#c8a84b]" />
+              <h2 className="text-xl font-bold text-[#c8a84b] uppercase tracking-wider">BDE Daily Reports</h2>
+            </div>
+            {isBDE && (
+              <Dialog open={isReportModalOpen} onOpenChange={setIsReportModalOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-[#c8a84b] hover:bg-[#a68a3d] text-black font-bold">
+                    <Plus className="mr-2 h-4 w-4" /> Submit Daily Report
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md bg-neutral-900 border-white/10 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+                  <DialogHeader>
+                    <DialogTitle className="text-[#c8a84b]">SUBMIT DAILY REPORT</DialogTitle>
+                    <DialogDescription className="text-muted-foreground text-xs">Enter your performance metrics for the selected date.</DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const payload = {
+                        bde_id: reportForm.bde_id,
+                        company_id: currentUser?.company_id || null,
+                        report_date: reportForm.report_date,
+                        country: reportForm.country,
+                        total_calls: Number(reportForm.total_calls) || 0,
+                        calls_attended: Number(reportForm.calls_attended) || 0,
+                        not_attended_calls: Number(reportForm.not_attended_calls) || 0,
+                        linkedin_messages: Number(reportForm.linkedin_messages) || 0,
+                        emails_sent: Number(reportForm.emails_sent) || 0,
+                        new_leads: Number(reportForm.new_leads) || 0,
+                        notes: reportForm.notes,
+                        attended_names: selectedLeads.join(", ")
+                      };
+
+                      if (!payload.bde_id) {
+                        toast.error("Please select a BDE Member Name");
+                        return;
+                      }
+
+                      const { error } = await supabase.from('bde_daily_reports' as any).insert(payload as any);
+                      if (error) throw error;
+                      toast.success("Daily report submitted successfully");
+                      setIsReportModalOpen(false);
+                      setReportForm({
+                        report_date: format(new Date(), 'yyyy-MM-dd'),
+                        bde_id: '',
+                        country: '',
+                        total_calls: 0,
+                        calls_attended: 0,
+                        not_attended_calls: 0,
+                        linkedin_messages: 0,
+                        emails_sent: 0,
+                        new_leads: 0,
+                        notes: ''
+                      });
+                      setSelectedLeads([]);
+                      fetchDailyReports();
+                    } catch (err: any) {
+                      toast.error(err.message || "Failed to submit report");
+                    }
+                  }} className="grid grid-cols-2 gap-4 pt-4">
+                    <div className="col-span-2 space-y-2">
+                      <Label>Report Date</Label>
+                      <Input type="date" value={reportForm.report_date} onChange={e => setReportForm({...reportForm, report_date: e.target.value})} required className="bg-black/40 border-white/10" />
+                    </div>
+                    <div className="col-span-2 space-y-2">
+                      <Label>BDE Member Name *</Label>
+                      <Select value={reportForm.bde_id} onValueChange={(val) => setReportForm({ ...reportForm, bde_id: val })}>
+                        <SelectTrigger className="bg-black/40 border-white/10 text-white">
+                          <SelectValue placeholder="Select member..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-neutral-900 border-white/10">
+                          {loading ? (
+                            <div className="p-2 text-xs text-muted-foreground text-center">Loading members...</div>
+                          ) : bdeMembers.length === 0 ? (
+                            <div className="p-2 text-xs text-muted-foreground text-center">No BDE members found.</div>
+                          ) : (
+                            bdeMembers.map((member) => (
+                              <SelectItem key={member.id} value={member.id} className="text-white">
+                                {member.full_name || 'Unnamed Member'}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>New Leads Added</Label>
+                      <Input 
+                        type="number" 
+                        min={0}
+                        value={reportForm.new_leads === 0 ? '' : reportForm.new_leads} 
+                        onChange={e => setReportForm({...reportForm, new_leads: e.target.value === '' ? 0 : parseInt(e.target.value, 10)})} 
+                        className="bg-black/40 border-white/10" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Total Calls</Label>
+                      <Input 
+                        type="number" 
+                        min={0}
+                        value={reportForm.total_calls === 0 ? '' : reportForm.total_calls} 
+                        onChange={e => setReportForm({...reportForm, total_calls: e.target.value === '' ? 0 : parseInt(e.target.value, 10)})} 
+                        className="bg-black/40 border-white/10" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Calls Attended</Label>
+                      <Input 
+                        type="number" 
+                        min={0}
+                        value={reportForm.calls_attended === 0 ? '' : reportForm.calls_attended} 
+                        onChange={e => setReportForm({...reportForm, calls_attended: e.target.value === '' ? 0 : parseInt(e.target.value, 10)})} 
+                        className="bg-black/40 border-white/10" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Not Attended Calls</Label>
+                      <Input 
+                        type="number" 
+                        min={0}
+                        value={reportForm.not_attended_calls === 0 ? '' : reportForm.not_attended_calls} 
+                        onChange={e => setReportForm({...reportForm, not_attended_calls: e.target.value === '' ? 0 : parseInt(e.target.value, 10)})} 
+                        className="bg-black/40 border-white/10" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>LinkedIn Messages</Label>
+                      <Input 
+                        type="number" 
+                        min={0}
+                        value={reportForm.linkedin_messages === 0 ? '' : reportForm.linkedin_messages} 
+                        onChange={e => setReportForm({...reportForm, linkedin_messages: e.target.value === '' ? 0 : parseInt(e.target.value, 10)})} 
+                        className="bg-black/40 border-white/10" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Emails Sent</Label>
+                      <Input 
+                        type="number" 
+                        min={0}
+                        value={reportForm.emails_sent === 0 ? '' : reportForm.emails_sent} 
+                        onChange={e => setReportForm({...reportForm, emails_sent: e.target.value === '' ? 0 : parseInt(e.target.value, 10)})} 
+                        className="bg-black/40 border-white/10" 
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-2">
+                      <Label>Leads Name</Label>
+                      <Popover open={isLeadsPopoverOpen} onOpenChange={setIsLeadsPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-between bg-black/40 border-white/10 text-left font-normal h-auto min-h-[40px] py-2"
+                          >
+                            <div className="flex flex-wrap gap-1 max-w-[300px]">
+                              {selectedLeads.length > 0 
+                                ? selectedLeads.join(", ")
+                                : "Select company..."}
+                            </div>
+                            <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[360px] p-0 bg-neutral-900 border-white/10" align="start">
+                          <div className="p-2 border-b border-white/5">
+                            <div className="flex items-center bg-black/20 rounded px-2">
+                              <SearchIcon className="h-4 w-4 text-muted-foreground mr-2" />
+                              <Input 
+                                placeholder="Filter leads..." 
+                                className="border-0 bg-transparent focus-visible:ring-0 h-8 text-xs" 
+                                value={leadSearch}
+                                onChange={e => setLeadSearch(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                            <div className="max-h-[300px] overflow-y-auto p-1">
+                              {filteredLeads.length === 0 && (
+                                <div className="p-4 text-center text-xs text-muted-foreground">No leads found.</div>
+                              )}
+                              {filteredLeads.map((lead) => (
+                                <div
+                                  key={lead.id}
+                                  className={`px-2 py-2 hover:bg-[#c8a84b]/10 cursor-pointer rounded text-xs ${selectedLeads.includes(lead.company_name) ? "text-[#c8a84b] font-bold bg-[#c8a84b]/5" : "text-white"}`}
+                                  onClick={() => {
+                                    if (selectedLeads.includes(lead.company_name)) {
+                                      setSelectedLeads(selectedLeads.filter(s => s !== lead.company_name));
+                                    } else {
+                                      setSelectedLeads([...selectedLeads, lead.company_name]);
+                                    }
+                                  }}
+                                >
+                                  {lead.company_name}
+                                </div>
+                              ))}
+                            </div>
+                          <div className="p-2 border-t border-white/5 bg-black/20 flex justify-between items-center">
+                            <span className="text-[10px] text-muted-foreground">{selectedLeads.length} selected</span>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-7 text-[10px] text-[#c8a84b]"
+                              onClick={() => setSelectedLeads([])}
+                            >Clear All</Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="col-span-2 space-y-2">
+                      <Label>Notes</Label>
+                      <Textarea 
+                        value={reportForm.notes} 
+                        onChange={e => setReportForm({...reportForm, notes: e.target.value})} 
+                        className="bg-black/40 border-white/10 min-h-[80px]" 
+                      />
+                    </div>
+                    <Button 
+                      type="submit" 
+                      className="col-span-2 bg-[#c8a84b] hover:bg-[#a68a3d] text-black font-bold"
+                    >
+                      SUBMIT PERFORMANCE LOG
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+            {isAdminOrManager && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-[#c8a84b] border-[#c8a84b]/20 hover:bg-[#c8a84b]/10"
+                onClick={() => {
+                  const headers = ["Date", "BDE", "Country", "Calls", "Attended", "Leads Name", "LinkedIn", "Emails", "Leads", "Notes"];
+                  const rows = dailyReports.map(r => [
+                    r.report_date,
+                    r.profiles?.full_name || 'Unknown',
+                    r.country,
+                    r.total_calls,
+                    r.calls_attended,
+                    r.attended_names,
+                    r.linkedin_messages,
+                    r.emails_sent,
+                    r.new_leads,
+                    r.notes
+                  ]);
+                  const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${v}"`).join(","))].join("\n");
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `BDE_Daily_Reports_${format(new Date(), 'yyyy-MM-dd')}.csv`;
+                  a.click();
+                }}
+              >
+                Download CSV Export
+              </Button>
+            )}
+          </div>
+
+          <div className="border border-white/5 rounded-md overflow-hidden bg-neutral-900/40">
+            <Table>
+              <TableHeader className="bg-black/40">
+                <TableRow className="border-white/5">
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground">Date</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground">BDE Name</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground text-center">Country</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground text-center">Calls (Tot/Att/Not)</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground text-center">LinkedIn</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground text-center">Emails</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground text-center">New Leads</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground text-center">Leads Name</TableHead>
+                  <TableHead className="text-[10px] uppercase font-black text-muted-foreground text-right px-4">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loadingReports ? (
+                  <TableRow>
+                    <TableCell colSpan={isAdminOrManager ? 8 : 7} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-[#c8a84b]" /></TableCell>
+                  </TableRow>
+                ) : dailyReports.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={isAdminOrManager ? 9 : 8} className="text-center py-10 theme-text-muted italic">No reports submitted yet.</TableCell>
+                  </TableRow>
+                ) : dailyReports.map(report => (
+                  <TableRow 
+                    key={report.id} 
+                    className="border-white/5 hover:bg-white/5 cursor-pointer"
+                    onClick={() => {
+                      setSelectedReport(report);
+                      setIsDetailsOpen(true);
+                    }}
+                  >
+                    <TableCell className="font-mono text-xs">{report.report_date}</TableCell>
+                    <TableCell className="font-bold text-white">{report.profiles?.full_name || 'System'}</TableCell>
+                    <TableCell className="capitalize text-xs text-center">{report.country}</TableCell>
+                    <TableCell className="text-center">
+                      <span className="text-white font-bold">{report.total_calls || 0}</span>
+                      <span className="text-muted-foreground mx-1">/</span>
+                      <span className="text-[#c8a84b] font-bold">{report.calls_attended || 0}</span>
+                      <span className="text-muted-foreground mx-1">/</span>
+                      <span className="text-red-400 font-bold">{report.not_attended_calls || 0}</span>
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-blue-400">{report.linkedin_messages}</TableCell>
+                    <TableCell className="text-center font-bold text-emerald-400">{report.emails_sent}</TableCell>
+                    <TableCell className="text-center font-bold text-orange-400">{report.new_leads}</TableCell>
+                    <TableCell className="max-w-[200px] truncate text-[10px] text-center text-[#c8a84b] font-bold">{report.attended_names || '-'}</TableCell>
+                    <TableCell className="text-right px-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReportToDelete(report.id);
+                          setIsConfirmDeleteOpen(true);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Report Details Modal */}
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="max-w-md bg-neutral-900 border-white/10 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
+          <DialogHeader>
+            <DialogTitle className="text-[#c8a84b] uppercase tracking-widest">Daily Report Details</DialogTitle>
+            <DialogDescription className="text-muted-foreground text-[10px]">Full audit log of the performance submission.</DialogDescription>
+          </DialogHeader>
+          {selectedReport && (
+            <div className="space-y-6 pt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Date</div>
+                  <div className="text-white font-bold">{selectedReport.report_date}</div>
+                </div>
+                <div className="space-y-1 text-right">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Country</div>
+                  <div className="text-white font-bold">{selectedReport.country}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Total Calls</div>
+                  <div className="text-white font-bold">{selectedReport.total_calls}</div>
+                </div>
+                <div className="space-y-1 text-right">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Calls Attended</div>
+                  <div className="text-[#c8a84b] font-black">{selectedReport.calls_attended}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Not Attended</div>
+                  <div className="text-red-400 font-black">{selectedReport.not_attended_calls}</div>
+                </div>
+                <div className="space-y-1 text-right">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">LinkedIn Messages</div>
+                  <div className="text-blue-400 font-bold">{selectedReport.linkedin_messages}</div>
+                </div>
+                <div className="space-y-1 text-right">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Emails Sent</div>
+                  <div className="text-emerald-400 font-bold">{selectedReport.emails_sent}</div>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">New Leads Added</div>
+                  <div className="text-orange-400 font-bold text-xl font-black">{selectedReport.new_leads}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] text-muted-foreground uppercase font-black">Leads Name</div>
+                <div className="bg-emerald-500/5 p-3 rounded border border-emerald-500/10 text-xs text-white leading-relaxed">
+                  {selectedReport.attended_names || "No successful contacts logged"}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] text-muted-foreground uppercase font-black">Notes</div>
+                <div className="bg-black/40 p-3 rounded border border-white/5 text-xs text-muted-foreground min-h-[60px]">
+                  {selectedReport.notes || "No notes provided"}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-white/5 flex flex-col gap-1">
+                <div className="text-[10px] text-muted-foreground uppercase">
+                  Submitted by: <span className="text-white font-bold ml-1">{selectedReport.profiles?.full_name || "Unknown"}</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground uppercase">
+                  Submitted at: <span className="text-white ml-1">{format(new Date(selectedReport.created_at), "PPp")}</span>
+                </div>
+              </div>
+              
+              <Button onClick={() => setIsDetailsOpen(false)} className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10 mt-2">
+                CLOSE DETAILS
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={isConfirmDeleteOpen}
+        onCancel={() => setIsConfirmDeleteOpen(false)}
+        onConfirm={handleDeleteReport}
+        title="Delete Daily Report"
+        description="Are you sure you want to delete this daily report? This action cannot be undone."
+        confirmLabel="Delete Report"
+        confirmVariant="destructive"
       />
     </div>
   );

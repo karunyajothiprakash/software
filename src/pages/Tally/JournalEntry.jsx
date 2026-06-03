@@ -3,7 +3,7 @@ import { PageHeader } from '../../components/shared/PageHeader'
 import { Badge } from '../../components/ui/badge'
 import { supabase } from '../../lib/supabase'
 import { toast } from 'sonner'
-import { Plus, Trash2, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
+import { Plus, Trash2, CheckCircle2, AlertTriangle, Loader2, Calendar, ChevronDown, FileText, Hash, Receipt, Edit3, Lock } from 'lucide-react'
 
 
 
@@ -190,28 +190,43 @@ function NewEntryForm({ onSaved }) {
 
       <div className="bg-[#161616] border border-[#2a2a2a] rounded-[12px] p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 shadow-sm">
         <div>
-          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block">Voucher Type</label>
-          <select value={voucherType} onChange={(e) => setVoucherType(e.target.value)} className="force-gold-input rounded-[8px] px-[14px] py-[10px] w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm appearance-none cursor-pointer transition-colors">
-            <option>Journal Voucher</option><option>Payment Voucher</option>
-            <option>Receipt Voucher</option><option>Sales Voucher</option>
-            <option>Purchase Voucher</option><option>Contra Voucher</option>
-          </select>
+          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block flex items-center gap-1.5">Voucher Type</label>
+          <div className="relative">
+            <FileText className="absolute left-[14px] top-1/2 -translate-y-1/2 text-[#f0a500] w-4 h-4 pointer-events-none z-10" />
+            <select style={{ paddingLeft: '40px', paddingRight: '36px' }} value={voucherType} onChange={(e) => setVoucherType(e.target.value)} className="force-gold-input rounded-[8px] py-[10px] w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm appearance-none cursor-pointer transition-colors relative z-0">
+              <option>Journal Voucher</option><option>Payment Voucher</option>
+              <option>Receipt Voucher</option><option>Sales Voucher</option>
+              <option>Purchase Voucher</option><option>Contra Voucher</option>
+            </select>
+            <ChevronDown className="absolute right-[14px] top-1/2 -translate-y-1/2 text-[#888] w-4 h-4 pointer-events-none z-10" />
+          </div>
         </div>
         <div>
-          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block">Date</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="force-gold-input rounded-[8px] px-[14px] py-[10px] w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-colors" />
+          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block flex items-center gap-1.5">Date</label>
+          <div className="relative">
+            <Calendar className="absolute left-[14px] top-1/2 -translate-y-1/2 text-[#f0a500] w-4 h-4 pointer-events-none z-10" />
+            <input style={{ paddingLeft: '40px' }} type="date" value={date} onChange={(e) => setDate(e.target.value)} className="force-gold-input hide-calendar-icon rounded-[8px] pr-[14px] py-[10px] w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-colors relative z-0" />
+          </div>
         </div>
         <div>
-          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block">Voucher No</label>
-          <input type="text" readOnly value="Auto generated" className="bg-[#0f0f0f] border border-[#333] text-[#666] rounded-[8px] px-[14px] py-[10px] w-full focus:outline-none overflow-hidden text-ellipsis whitespace-nowrap text-sm cursor-not-allowed" />
+          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block flex items-center gap-1.5">Voucher No</label>
+          <div className="bg-[#1a1a1a] shadow-inner border border-[#333] text-[#888] rounded-[8px] px-[14px] py-[10px] w-full flex items-center gap-2 text-sm select-none cursor-not-allowed">
+            <Lock className="w-4 h-4 text-[#555]" /> Auto generated
+          </div>
         </div>
         <div>
-          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block">Reference No</label>
-          <input type="text" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="Invoice / PO No." className="force-gold-input rounded-[8px] px-[14px] py-[10px] w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm placeholder:text-[#555] transition-colors" />
+          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block flex items-center gap-1.5">Reference No</label>
+          <div className="relative">
+            <Receipt className="absolute left-[14px] top-1/2 -translate-y-1/2 text-[#f0a500] w-4 h-4 pointer-events-none z-10" />
+            <input style={{ paddingLeft: '40px' }} type="text" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="Invoice / PO No." className="force-gold-input rounded-[8px] pr-[14px] py-[10px] w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm placeholder:text-[#555] transition-colors relative z-0" />
+          </div>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
-          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block">Narration</label>
-          <textarea value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Describe the nature of this transaction..." className="force-gold-input rounded-[8px] px-[14px] py-[10px] w-full text-sm min-h-[80px] resize-y placeholder:text-[#555] transition-colors" />
+          <label className="uppercase tracking-[1.5px] text-[11px] force-gold-text font-[600] mb-2 block flex items-center gap-1.5">Narration</label>
+          <div className="relative">
+            <Edit3 className="absolute left-[14px] top-[14px] text-[#f0a500] w-4 h-4 pointer-events-none z-10" />
+            <textarea style={{ paddingLeft: '40px' }} value={narration} onChange={(e) => setNarration(e.target.value)} placeholder="Describe the nature of this transaction..." className="force-gold-input rounded-[8px] pr-[14px] py-[10px] w-full text-sm min-h-[80px] resize-y placeholder:text-[#555] transition-colors relative z-0" />
+          </div>
         </div>
       </div>
 
@@ -285,7 +300,7 @@ function NewEntryForm({ onSaved }) {
             onClick={addRow} 
             style={{
               width: '100%',
-              border: '1.5px dashed #f0a500',
+              border: '1.5px dashed #f0a400f0',
               color: '#f0a500',
               background: 'rgba(240,165,0,0.05)',
               padding: '12px 0',
@@ -370,6 +385,7 @@ export default function JournalEntry() {
         .force-gold-text { color: #f0a500 !important; }
         .force-gold-input { background-color: #0f0f0f !important; border: 1px solid #333 !important; color: #fff !important; }
         .force-gold-input:focus { border-color: #f0a500 !important; box-shadow: 0 0 0 2px rgba(240,165,0,0.15) !important; outline: none !important; }
+        .hide-calendar-icon::-webkit-calendar-picker-indicator { opacity: 0; position: absolute; left: 0; top: 0; width: 100%; height: 100%; cursor: pointer; }
       `}</style>
       <PageHeader
         title="Journal Entry"

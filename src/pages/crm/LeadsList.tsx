@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchBdeProfiles } from "@/lib/bde";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,8 +80,8 @@ export default function LeadsList() {
   const [selectedFollowUpLead, setSelectedFollowUpLead] = useState<Lead | null>(null);
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpNote, setFollowUpNote] = useState("");
-  const bdTeam = ["Kaviya", "Gayathri"];
-  const [followUpAssignedTo, setFollowUpAssignedTo] = useState(bdTeam[0]);
+  const [bdeMembers, setBdeMembers] = useState<any[]>([]);
+  const [followUpAssignedTo, setFollowUpAssignedTo] = useState("");
 
   const [isRemarkOpen, setIsRemarkOpen] = useState(false);
   const [selectedRemarkLead, setSelectedRemarkLead] = useState<Lead | null>(null);
@@ -123,7 +124,7 @@ export default function LeadsList() {
   const fetchLeads = async () => {
     try {
       const { data, error } = await supabase
-        .from("leads")
+        .from("leads" as any)
         .select(`*`)
         .order("created_at", { ascending: false });
 
@@ -133,6 +134,19 @@ export default function LeadsList() {
       toast.error(error.message || "Failed to fetch leads");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBdeMembers = async () => {
+    try {
+      const filtered = await fetchBdeProfiles(supabase);
+
+      setBdeMembers(filtered);
+      if (filtered.length > 0 && !followUpAssignedTo) {
+        setFollowUpAssignedTo(filtered[0].full_name || "");
+      }
+    } catch (err) {
+      console.error("Failed to fetch BDE members:", err);
     }
   };
 
@@ -152,6 +166,7 @@ export default function LeadsList() {
   useEffect(() => {
     fetchLeads();
     fetchTeam();
+    fetchBdeMembers();
 
     // Add realtime subscription for leads
     const channel = supabase
@@ -209,7 +224,7 @@ export default function LeadsList() {
         throw new Error("You must be logged in to create a lead");
       }
 
-      const { error } = await supabase.from("leads").insert({
+      const { error } = await supabase.from("leads" as any).insert({
         date: date || null,
         business_category: businessCategory,
         company_name: companyName,
@@ -255,7 +270,7 @@ export default function LeadsList() {
 
       if (customerError) throw customerError;
 
-      await supabase.from("leads").update({ stage: "Won" }).eq("id", lead.id);
+      await supabase.from("leads" as any).update({ stage: "Won" }).eq("id", lead.id);
 
       toast.success(`${lead.company_name} is now a registered Customer!`);
       fetchLeads();
@@ -268,7 +283,7 @@ export default function LeadsList() {
     setSelectedFollowUpLead(lead);
     setFollowUpDate(new Date().toISOString().slice(0, 10));
     setFollowUpNote("");
-    setFollowUpAssignedTo(bdTeam[0]);
+    setFollowUpAssignedTo(lead.assigned_to || (bdeMembers[0]?.full_name || ""));
     setIsFollowUpOpen(true);
   };
 
@@ -280,7 +295,7 @@ export default function LeadsList() {
 
     const assignee = followUpAssignedTo;
     try {
-      const { error } = await supabase.from("follow_ups").insert({
+      const { error } = await supabase.from("follow_ups" as any).insert({
         lead_id: selectedFollowUpLead.id,
         company_name: selectedFollowUpLead.company_name,
         contact_name: selectedFollowUpLead.contact_name,
@@ -293,7 +308,7 @@ export default function LeadsList() {
 
       // Update the lead's assigned_to field to reflect the new assignment
       const { error: updateError } = await supabase
-        .from("leads")
+        .from("leads" as any)
         .update({ assigned_to: assignee })
         .eq("id", selectedFollowUpLead.id);
 
@@ -304,7 +319,7 @@ export default function LeadsList() {
       setSelectedFollowUpLead(null);
       setFollowUpDate("");
       setFollowUpNote("");
-      setFollowUpAssignedTo(bdTeam[0]);
+      setFollowUpAssignedTo(bdeMembers[0]?.full_name || "");
 
       // Refresh the leads list to show the updated assigned_to value
       await fetchLeads();
@@ -341,7 +356,7 @@ export default function LeadsList() {
       const formattedRemark = trimmedText ? `[${remarkMethod}]: ${trimmedText}` : "";
 
       const { error } = await supabase
-        .from("leads")
+        .from("leads" as any)
         .update({ remark: formattedRemark })
         .eq("id", selectedRemarkLead.id);
 
@@ -366,7 +381,7 @@ export default function LeadsList() {
   const executeDelete = async () => {
     if (!deleteId) return;
     try {
-      const { error } = await supabase.from("leads").delete().eq("id", deleteId);
+      const { error } = await supabase.from("leads" as any).delete().eq("id", deleteId);
       if (error) throw error;
       toast.success("Lead deleted successfully");
       fetchLeads();
@@ -513,9 +528,9 @@ export default function LeadsList() {
                     <SelectValue placeholder="Select team member" />
                   </SelectTrigger>
                   <SelectContent>
-                    {bdTeam.map((member) => (
-                      <SelectItem key={member} value={member}>
-                        {member}
+                    {bdeMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.full_name}>
+                        {member.full_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -572,9 +587,9 @@ export default function LeadsList() {
                     <SelectValue placeholder="Select team member" />
                   </SelectTrigger>
                   <SelectContent>
-                    {bdTeam.map((member) => (
-                      <SelectItem key={member} value={member}>
-                        {member}
+                    {bdeMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.full_name}>
+                        {member.full_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -744,7 +759,7 @@ export default function LeadsList() {
                         defaultValue={lead.stage}
                         onValueChange={async (newStage) => {
                           try {
-                            const { error } = await supabase.from("leads").update({ stage: newStage }).eq("id", lead.id);
+                            const { error } = await supabase.from("leads" as any).update({ stage: newStage }).eq("id", lead.id);
                             if (error) throw error;
                             toast.success(`Lead moved to ${newStage}`);
                             fetchLeads();

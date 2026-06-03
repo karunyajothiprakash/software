@@ -34,7 +34,7 @@ const ROLE_NAMES: Record<string, string> = {
 
 
 export default function EmployeeDirectory() {
-  const { onlineUsers, roleSlugs } = useAuth();
+  const { onlineUsers, roleSlugs, user, activeMinutes, idleMinutes } = useAuth();
   const isAdminOrManager = useIsAdminOrManager();
   const isAdmin = Array.from(roleSlugs).map(s => s.toLowerCase()).includes("admin");
   const [employees, setEmployees] = useState<ProfileRow[]>([]);
@@ -64,7 +64,7 @@ export default function EmployeeDirectory() {
         const { data: sessData } = await (supabase
           .from("user_sessions" as any) as any)
           .select("*")
-          .gte("login_time", todayStartsAt.toISOString())
+          .or(`login_time.gte.${todayStartsAt.toISOString()},logout_time.is.null`)
           .order("login_time", { ascending: false });
         
         if (sessData) setSessions(sessData);
@@ -274,7 +274,20 @@ export default function EmployeeDirectory() {
               : "?";
             const roleName = e.requested_role ? (ROLE_NAMES[e.requested_role] || e.requested_role) : "Employee";
             const stats = isAdmin ? getSessionStats(e.id) : null;
-            const currentStatus = stats?.status || (onlineUsers.includes(e.id) ? "Active" : "Offline");
+            const isOnline = onlineUsers.includes(e.id);
+            const sessionStatus = stats?.status || "Offline";
+            const currentStatus = (isOnline && sessionStatus === 'Offline') ? 'Active' : sessionStatus;
+
+            const isCurrentUser = user && user.id === e.id;
+            const formatMins = (totalMinutes: number) => {
+              const hours = Math.floor(totalMinutes / 60);
+              const mins = totalMinutes % 60;
+              return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+            };
+
+            const displayActiveStr = isCurrentUser ? formatMins(activeMinutes) : (stats?.activeStr || "-");
+            const displayIdleStr = isCurrentUser ? formatMins(idleMinutes) : (stats?.idleStr || "-");
+            const displayWorkStr = isCurrentUser ? formatMins(activeMinutes) : (stats?.workStr || "0m");
 
             return (
               <Section key={e.id} className="hover:border-primary/50 transition-colors">
@@ -332,11 +345,11 @@ export default function EmployeeDirectory() {
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <label className="text-[9px] uppercase font-black text-gray-500 tracking-tighter">Active Time</label>
-                            <p className="text-[11px] font-bold text-green-500">{stats?.activeStr || "-"}</p>
+                            <p className="text-[11px] font-bold text-green-500">{displayActiveStr}</p>
                           </div>
                           <div className="space-y-1">
                             <label className="text-[9px] uppercase font-black text-gray-500 tracking-tighter">Idle Time</label>
-                            <p className="text-[11px] font-bold text-yellow-500">{stats?.idleStr || "-"}</p>
+                            <p className="text-[11px] font-bold text-yellow-500">{displayIdleStr}</p>
                           </div>
                         </div>
                         
@@ -347,12 +360,12 @@ export default function EmployeeDirectory() {
                                currentStatus === 'Idle' ? 'bg-yellow-500' : 'bg-red-500'
                              }`} />
                              <span className="text-[10px] font-black uppercase text-gray-400">
-                               {currentStatus === 'Active' ? "🟢 Active" : currentStatus === 'Idle' ? "🟡 Idle" : "🔴 Offline"}
+                               {currentStatus}
                              </span>
                           </div>
                           <div className="text-right">
                              <span className="text-[9px] uppercase font-black text-gray-500 block leading-none mb-0.5">Work Time</span>
-                             <span className="text-[11px] font-black text-amber-500">{stats?.workStr || "0m"}</span>
+                             <span className="text-[11px] font-black text-amber-500">{displayWorkStr}</span>
                           </div>
                         </div>
                       </div>

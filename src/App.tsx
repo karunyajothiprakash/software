@@ -250,6 +250,7 @@ const App = () => (
               <Route path="/quotations/:id/report" element={<QuotationReport />} />
 
               {/* CRM */}
+              <Route path="/crm" element={<Navigate to="/crm/dashboard" replace />} />
               <Route path="/crm/dashboard" element={<CrmDashboard />} />
               <Route path="/crm/activities" element={<LeadActivities />} />
               <Route path="/crm/leads" element={<LeadsList />} />

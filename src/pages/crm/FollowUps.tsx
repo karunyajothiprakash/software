@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchBdeProfiles } from "@/lib/bde";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,8 +45,6 @@ type LeadOption = {
   website?: string | null;
 };
 
-const bdTeam = ["Kaviya", "Gayathri"];
-
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
   return new Date(value).toLocaleDateString();
@@ -63,20 +62,33 @@ export default function FollowUps() {
   const [timePeriod, setTimePeriod] = useState<"AM" | "PM">("AM");
   const [contactMethod, setContactMethod] = useState("WhatsApp");
   const [note, setNote] = useState("");
-  const [assignedTo, setAssignedTo] = useState(bdTeam[0]);
+  const [assignedTo, setAssignedTo] = useState("");
   const [filter, setFilter] = useState<"all" | "mine" | "pending">("all");
   const [selectedFollowUp, setSelectedFollowUp] = useState<FollowUp | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const isBde = roleSlugs.has("bd") || roleSlugs.has("bde");
+  const [bdeMembers, setBdeMembers] = useState<any[]>([]);
+  const isBdeTeam = roleSlugs.has("bd") || roleSlugs.has("bde") || roleSlugs.has("sales");
 
+  const fetchBdeMembers = async () => {
+    try {
+      const filtered = await fetchBdeProfiles(supabase);
+
+      setBdeMembers(filtered);
+      if (filtered.length > 0 && !assignedTo) {
+        setAssignedTo(filtered[0].full_name || "");
+      }
+    } catch (err) {
+      console.error("Failed to fetch BDE members:", err);
+    }
+  };
 
   const fetchLeads = async () => {
     try {
       const { data, error } = await supabase
-        .from("leads")
+        .from("leads" as any)
         .select("id, company_name, contact_name, business_category, product_type, country, mobile, email, website")
         .order("created_at", { ascending: false });
 
@@ -91,7 +103,7 @@ export default function FollowUps() {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from("follow_ups")
+        .from("follow_ups" as any)
         .select("id, lead_id, company_name, contact_name, follow_up_date, reminder_time, note, assigned_to, is_notified, business_category, product_type, country, mobile, email, website")
         .order("follow_up_date", { ascending: false });
 
@@ -107,6 +119,7 @@ export default function FollowUps() {
   useEffect(() => {
     fetchLeads();
     fetchFollowUps();
+    fetchBdeMembers();
 
     const channel = supabase
       .channel("follow-ups-changes")
@@ -162,20 +175,20 @@ export default function FollowUps() {
 
       if (isEditing && selectedFollowUp) {
         const { error } = await supabase
-          .from("follow_ups")
+          .from("follow_ups" as any)
           .update(payload)
           .eq("id", selectedFollowUp.id);
         if (error) throw error;
         toast.success("Follow-up updated successfully");
       } else {
-        const { error } = await supabase.from("follow_ups").insert(payload);
+        const { error } = await supabase.from("follow_ups" as any).insert(payload);
         if (error) throw error;
         toast.success("Follow-up created successfully");
       }
 
       // Update the lead's assigned_to field to reflect the new assignment
       const { error: updateError } = await supabase
-        .from("leads")
+        .from("leads" as any)
         .update({ assigned_to: assignee })
         .eq("id", selectedLeadId);
       
@@ -196,7 +209,7 @@ export default function FollowUps() {
     setTimePeriod("AM");
     setContactMethod("WhatsApp");
     setNote("");
-    setAssignedTo(bdTeam[0]);
+    setAssignedTo(bdeMembers[0]?.full_name || "");
     setIsEditing(false);
     setSelectedFollowUp(null);
   };
@@ -205,7 +218,7 @@ export default function FollowUps() {
     setSelectedFollowUp(followUp);
     setSelectedLeadId(followUp.lead_id);
     setFollowUpDate(followUp.follow_up_date || "");
-    setAssignedTo(followUp.assigned_to || bdTeam[0]);
+    setAssignedTo(followUp.assigned_to || (bdeMembers[0]?.full_name || ""));
     
     // Parse note: "Method: Note"
     const noteParts = followUp.note?.split(": ");
@@ -235,7 +248,7 @@ export default function FollowUps() {
 
   const handleAcknowledge = async (id: string) => {
     try {
-      const { error } = await supabase.from("follow_ups").update({ is_notified: true }).eq("id", id);
+      const { error } = await supabase.from("follow_ups" as any).update({ is_notified: true }).eq("id", id);
       if (error) throw error;
       toast.success("Follow-up acknowledged");
       fetchFollowUps();
@@ -246,7 +259,7 @@ export default function FollowUps() {
 
   const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabase.from("follow_ups").delete().eq("id", id);
+      const { error } = await supabase.from("follow_ups" as any).delete().eq("id", id);
       if (error) throw error;
       toast.success("Follow-up deleted");
       fetchFollowUps();
@@ -320,7 +333,7 @@ export default function FollowUps() {
         </div>
         <div className="rounded-lg border border-border bg-card p-4">
           <div className="text-sm uppercase tracking-wide text-muted-foreground">Team members</div>
-          <div className="mt-2 text-3xl font-semibold text-foreground">{bdTeam.length}</div>
+          <div className="mt-2 text-3xl font-semibold text-foreground">{bdeMembers.length}</div>
         </div>
       </div>
 
@@ -564,9 +577,9 @@ export default function FollowUps() {
                   <SelectValue placeholder="Choose assignee" />
                 </SelectTrigger>
                 <SelectContent>
-                  {bdTeam.map((member) => (
-                    <SelectItem key={member} value={member}>
-                      {member}
+                  {bdeMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.full_name}>
+                      {member.full_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
