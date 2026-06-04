@@ -1,4 +1,3 @@
--- Create BDE Daily Reports table
 CREATE TABLE IF NOT EXISTS public.bde_daily_reports (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     bde_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,

@@ -23,7 +23,8 @@ import {
   Plus,
   Trash2,
   ChevronsUpDown,
-  UserCheck
+  UserCheck,
+  X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -105,6 +106,8 @@ export default function Reports() {
   const [bdeMembers, setBdeMembers] = useState<any[]>([]);
   const [leadSearch, setLeadSearch] = useState("");
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [selectedDetailReport, setSelectedDetailReport] = useState<any>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isLeadsPopoverOpen, setIsLeadsPopoverOpen] = useState(false);
   const [reportForm, setReportForm] = useState({
     report_date: format(new Date(), 'yyyy-MM-dd'),
@@ -1283,7 +1286,14 @@ export default function Reports() {
                 (data?.dailyReports || [])
                   .filter(r => isInDateRange(r.report_date) && isEmpMatch(r.bde_id, selectedBDE))
                   .map((report, idx) => (
-                    <TableRow key={idx} className="border-white/5 hover:bg-[#c8a84b]/5 transition-colors">
+                    <TableRow 
+                      key={idx} 
+                      className="border-white/5 hover:bg-[#c8a84b]/10 transition-all cursor-pointer group"
+                      onClick={() => {
+                        setSelectedDetailReport(report);
+                        setIsDetailOpen(true);
+                      }}
+                    >
                       <TableCell className="font-mono text-xs font-bold text-white/70">{report.report_date}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -1324,6 +1334,90 @@ export default function Reports() {
           </Table>
         </Card>
       </div>
+
+      {/* Report Detail Modal */}
+      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <DialogContent className="max-w-2xl bg-neutral-900 border-white/10 p-0 overflow-hidden shadow-2xl">
+          <div className="p-6 border-b border-white/5 bg-black/40 relative">
+            <button onClick={() => setIsDetailOpen(false)} className="absolute right-4 top-4 text-muted-foreground hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-neutral-800 border border-white/5 flex items-center justify-center text-[#c8a84b] font-black text-lg">
+                {(data?.profiles.find(p => p.id === selectedDetailReport?.bde_id)?.full_name || 'U')[0]}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-2xl font-black text-white leading-none">{data?.profiles.find(p => p.id === selectedDetailReport?.bde_id)?.full_name || 'Unknown BDE'}</h3>
+                <div className="text-sm text-muted-foreground mt-1">
+                  {selectedDetailReport?.report_date ? (format(parseISO(selectedDetailReport.report_date), 'PPP')) : ''} • {selectedDetailReport?.country || 'Worldwide'}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  <span className="text-xs font-black text-emerald-500 uppercase">Verified</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {selectedDetailReport && (
+            <div className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                {/** Metric Card */}
+                <div className="bg-white/3 rounded-xl p-4 border border-white/5">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Total Calls</div>
+                  <div className="text-xl font-black text-white mt-1">{selectedDetailReport.total_calls}</div>
+                </div>
+
+                <div className="bg-white/3 rounded-xl p-4 border border-white/5">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Attended</div>
+                  <div className="text-xl font-black text-emerald-500 mt-1">{selectedDetailReport.calls_attended}</div>
+                </div>
+
+                <div className="bg-white/3 rounded-xl p-4 border border-white/5">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Not Attended</div>
+                  <div className="text-xl font-black text-red-500 mt-1">{selectedDetailReport.not_attended_calls}</div>
+                </div>
+
+                <div className="bg-white/3 rounded-xl p-4 border border-white/5">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">LinkedIn Messages</div>
+                  <div className="text-xl font-black text-blue-400 mt-1">{selectedDetailReport.linkedin_messages}</div>
+                </div>
+
+                <div className="bg-white/3 rounded-xl p-4 border border-white/5">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Emails Sent</div>
+                  <div className="text-xl font-black text-orange-400 mt-1">{selectedDetailReport.emails_sent}</div>
+                </div>
+
+                <div className="bg-white/3 rounded-xl p-4 border border-white/5">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">New Leads</div>
+                  <div className="text-xl font-black text-[#c8a84b] mt-1">{selectedDetailReport.new_leads}</div>
+                </div>
+
+                <div className="col-span-1 sm:col-span-2 md:col-span-3 space-y-2">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Lead Company Names</div>
+                  <div className="text-sm font-medium text-white bg-white/3 rounded-md p-3 border border-white/5">{selectedDetailReport.attended_names || 'No specific leads'}</div>
+                </div>
+
+                <div className="col-span-1 sm:col-span-2 md:col-span-3 space-y-2">
+                  <div className="text-[10px] text-muted-foreground uppercase font-black">Notes</div>
+                  <div className="text-sm text-muted-foreground italic bg-white/3 rounded-md p-3 border border-white/5">{selectedDetailReport.notes || 'No notes provided.'}</div>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-white/5 flex justify-end">
+                <Button 
+                  onClick={() => setIsDetailOpen(false)}
+                  className="bg-white text-black hover:bg-white/90 font-black uppercase text-[10px] px-6 h-10 rounded-xl tracking-widest"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
