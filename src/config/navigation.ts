@@ -66,7 +66,6 @@ export const navGroups: NavGroup[] = [
       { title: "Follow-Ups", url: "/crm/follow-ups", icon: CalendarCheck, permission: "farmers.view" },
       { title: "Customer Database", url: "/crm/customer-database", icon: Database, permission: "farmers.view" },
       { title: "Task", url: "/crm/tasks", icon: ClipboardCheck, permission: "farmers.view" },
-      { title: "Performance", url: "/crm/performance", icon: TrendingUp, permission: "farmers.view" },
       { title: "Activities", url: "/crm/activities", icon: CalendarCheck, permission: "farmers.view" },
       { title: "Report", url: "/crm/reports", icon: BarChart3, permission: "farmers.view" },
       { title: "Mail Box", url: "/system/mailbox", icon: Inbox, permission: "farmers.view" },
@@ -77,6 +76,14 @@ export const navGroups: NavGroup[] = [
       { title: "Screen Monitor", url: "/crm/screen-monitor", icon: Monitor, permission: "farmers.view" },
       { title: "Employee Activity", url: "/crm/employee-activity", icon: Activity, permission: "farmers.view" },
     ],
+  },
+  {
+    title: "Revenue & Performance Analytics",
+    icon: TrendingUp,
+    items: [
+      { title: "Performance", url: "/crm/performance", icon: TrendingUp, permission: "farmers.view" },
+      { title: "Revenue Analytics", url: "/crm/revenue", icon: TrendingUp, permission: "farmers.view" },
+    ]
   },
   {
     title: "Mobile CRM",

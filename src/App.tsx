@@ -26,6 +26,7 @@ import CrmClientAcquisition from "./pages/crm/ClientAcquisition";
 import CrmAdvancedSecurity from "./pages/crm/AdvancedSecurity";
 import CrmReports from "./pages/crm/Reports";
 import CrmPerformance from "./pages/crm/Performance";
+import CrmRevenue from "./pages/crm/RevenueAnalytics";
 import CrmCommunication from "./pages/crm/Communication";
 import CrmCustomerDatabase from "./pages/crm/CustomerDatabase";
 import CrmEmployeeActivity from "./pages/crm/EmployeeActivity";
@@ -269,6 +270,7 @@ const App = () => (
               <Route path="/crm/advanced-security" element={<CrmAdvancedSecurity />} />
               <Route path="/crm/reports" element={<CrmReports />} />
               <Route path="/crm/performance" element={<CrmPerformance />} />
+              <Route path="/crm/revenue" element={<CrmRevenue />} />
               <Route path="/crm/communication" element={<CrmCommunication />} />
               <Route path="/crm/customer-database" element={<CrmCustomerDatabase />} />
               <Route path="/crm/employee-activity" element={<CrmEmployeeActivity />} />
