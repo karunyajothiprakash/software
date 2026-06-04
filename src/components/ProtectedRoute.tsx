@@ -2,13 +2,18 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useScreenBroadcaster } from "@/hooks/useScreenBroadcaster";
 
 export function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { session, profile, loading, refresh, roleSlugs } = useAuth();
   const location = useLocation();
   const [screenStatus, setScreenStatus] = useState<"idle" | "requesting" | "sharing" | "denied">("idle");
   const streamRef = useRef<MediaStream | null>(null);
+  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const hasStarted = useRef(false);
+
+  // Broadcast this user's screen if requested by an admin
+  useScreenBroadcaster(profile?.id, activeStream);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -31,6 +36,7 @@ export function ProtectedRoute({ children }: { children: JSX.Element }) {
         });
 
         streamRef.current = stream;
+        setActiveStream(stream);
         (window as any).__screenStream = stream; // ← globally store
         setScreenStatus("sharing");
 
@@ -45,6 +51,7 @@ export function ProtectedRoute({ children }: { children: JSX.Element }) {
         stream.getVideoTracks()[0].onended = async () => {
           setScreenStatus("denied");
           streamRef.current = null;
+          setActiveStream(null);
           (window as any).__screenStream = null;
           await (supabase.from("activity_logs") as any).insert({
             user_id: profile.id,
