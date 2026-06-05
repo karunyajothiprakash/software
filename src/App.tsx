@@ -83,13 +83,23 @@ import BarcodeDetail from "./pages/barcodes/BarcodeDetail";
 // Inventory
 import ProductCatalog from "./pages/inventory/ProductCatalog";
 import CreateProduct from "./pages/inventory/CreateProduct";
-import StockDashboard from "./pages/inventory/StockDashboard";
+import InventoryBatches from "./pages/inventory/InventoryBatches";
 import StockMovements from "./pages/inventory/StockMovements";
 import Warehouses from "./pages/inventory/Warehouses";
 import LowStockAlerts from "./pages/inventory/LowStockAlerts";
 import DamagedStock from "./pages/inventory/DamagedStock";
+import AvailableStock from "./pages/inventory/AvailableStock";
+import ReservedStock from "./pages/inventory/ReservedStock";
+import ExportReady from "./pages/inventory/ExportReady";
+import BatchWiseStock from "./pages/inventory/BatchWiseStock";
+import DamagedStockManagement from "./pages/inventory/DamagedStockManagement";
+import ExpiryMonitoring from "./pages/inventory/ExpiryMonitoring";
+import MultiWarehouse from "./pages/inventory/MultiWarehouse";
+
+// Warehouse
 import WarehouseDashboard from "./pages/warehouse/WarehouseDashboard";
-import ReceivingGoods from "./pages/warehouse/ReceivingGoods";
+import WarehouseRacks from "./pages/warehouse/WarehouseRacks";
+import WarehouseZones from "./pages/warehouse/WarehouseZones";
 
 // Quotations
 import QuotationsList from "./pages/quotations/QuotationsList";
@@ -133,7 +143,6 @@ import EmployeeDirectory from "./pages/employees/EmployeeDirectory";
 import Attendance from "./pages/employees/Attendance";
 import RolesPermissions from "./pages/employees/RolesPermissions";
 import FaceAttendance from "./pages/FaceAttendance.tsx";
-import SalaryReport from "./pages/employees/SalaryReport";
 
 // System
 import Notifications from "./pages/system/Notifications";
@@ -242,15 +251,24 @@ const App = () => (
               {/* Inventory */}
               <Route path="/inventory/products" element={<ProductCatalog />} />
               <Route path="/inventory/products/create" element={<CreateProduct />} />
-              <Route path="/inventory/stock" element={<StockDashboard />} />
+              <Route path="/inventory/stock" element={<InventoryBatches />} />
               <Route path="/inventory/movements" element={<StockMovements />} />
               <Route path="/inventory/warehouses" element={<Warehouses />} />
               <Route path="/inventory/alerts" element={<LowStockAlerts />} />
               <Route path="/inventory/damaged" element={<DamagedStock />} />
+              <Route path="/inventory/available-stock" element={<AvailableStock />} />
+              <Route path="/inventory/reserved-stock" element={<ReservedStock />} />
+              <Route path="/inventory/export-ready" element={<ExportReady />} />
+              <Route path="/inventory/batch-wise" element={<BatchWiseStock />} />
+              <Route path="/inventory/damaged-stock-management" element={<DamagedStockManagement />} />
+              <Route path="/inventory/expiry-monitoring" element={<ExpiryMonitoring />} />
+              <Route path="/inventory/multi-warehouse" element={<MultiWarehouse />} />
 
               {/* Warehouse */}
               <Route path="/warehouse/dashboard" element={<WarehouseDashboard />} />
-              <Route path="/warehouse/receiving" element={<ReceivingGoods />} />
+              <Route path="/warehouse/racks" element={<WarehouseRacks />} />
+              <Route path="/warehouse/zones" element={<WarehouseZones />} />
+              <Route path="/warehouse" element={<Navigate to="/warehouse/dashboard" replace />} />
 
               {/* Quotations */}
               <Route path="/quotations" element={<QuotationsList />} />
@@ -331,7 +349,6 @@ const App = () => (
               <Route path="/employees/attendance" element={<Attendance />} />
               <Route path="/employees/face-attendance" element={<FaceAttendance />} />
               <Route path="/employees/roles" element={<RolesPermissions />} />
-              <Route path="/employees/salary" element={<SalaryReport />} />
 
               {/* System */}
               <Route path="/system/notifications" element={<Notifications />} />

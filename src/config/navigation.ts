@@ -13,7 +13,8 @@ import {
   Wallet, Receipt, AlertCircle, BarChart3, Coins,
   UsersRound, CalendarCheck, ShieldCheck,
   Bell, ScrollText, CreditCard, Settings, Mail, MinusSquare, Trash2, Inbox,
-  Smartphone, Activity, ShieldAlert, Monitor, PhoneCall, Key, MessageSquare, Database, Globe
+  Smartphone, Activity, ShieldAlert, Monitor, PhoneCall, Key, MessageSquare, Database, Globe,
+  CheckSquare, Lock, Plane, Layers, AlertOctagon, Timer
 } from "lucide-react";
 
 import type { LucideIcon } from "lucide-react";
@@ -129,13 +130,13 @@ export const navGroups: NavGroup[] = [
     title: "Inventory",
     icon: Boxes,
     items: [
-      { title: "Inventory Batches", url: "/inventory/stock", icon: Boxes, permission: "inventory.view" },
-      { title: "Product Catalog", url: "/inventory/products", icon: Package },
-      { title: "Add Product", url: "/inventory/products/create", icon: PackagePlus, permission: "inventory.manage" },
-      { title: "Stock Movements", url: "/inventory/movements", icon: History },
-      { title: "Warehouses", url: "/inventory/warehouses", icon: Warehouse },
-      { title: "Damaged Stock", url: "/inventory/damaged", icon: AlertCircle },
-      { title: "Low Stock Alerts", url: "/inventory/alerts", icon: AlertTriangle },
+      { title: "Available Stock Management", url: "/inventory/available-stock", icon: CheckSquare },
+      { title: "Reserved Stock Tracking", url: "/inventory/reserved-stock", icon: Lock },
+      { title: "Export Ready Inventory", url: "/inventory/export-ready", icon: Plane },
+      { title: "Batch-wise Stock Tracking", url: "/inventory/batch-wise", icon: Layers },
+      { title: "Damaged Stock Management", url: "/inventory/damaged-stock-management", icon: AlertOctagon },
+      { title: "Expiry Monitoring", url: "/inventory/expiry-monitoring", icon: Timer },
+      { title: "Multi-Warehouse Management", url: "/inventory/multi-warehouse", icon: Warehouse },
     ],
   },
   {

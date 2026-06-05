@@ -106,20 +106,30 @@ function LiveViewerModal({ targetUser, onClose }: { targetUser: BdeStatus; onClo
         const sig = payload.new;
         if (sig.to_user_id !== adminId.current) return;
 
-        if (sig.signal_type === "offer") {
-          await pc.setRemoteDescription(JSON.parse(sig.payload));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          await (supabase.from("screen_signals") as any).insert({
-            from_user_id: adminId.current,
-            to_user_id: targetUser.id,
-            signal_type: "answer",
-            payload: JSON.stringify(answer),
-          });
-        } else if (sig.signal_type === "candidate") {
-          try {
-            await pc.addIceCandidate(JSON.parse(sig.payload));
-          } catch { }
+        try {
+          if (sig.signal_type === "offer") {
+            // Only set remote description if in valid state
+            if (pc.signalingState === "stable" || pc.signalingState === "have-local-offer") {
+              await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(sig.payload)));
+            }
+            // Only create and set answer if we have a remote offer
+            if (pc.signalingState === "have-remote-offer") {
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              await (supabase.from("screen_signals") as any).insert({
+                from_user_id: adminId.current,
+                to_user_id: targetUser.id,
+                signal_type: "answer",
+                payload: JSON.stringify(answer),
+              });
+            }
+          } else if (sig.signal_type === "candidate") {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(sig.payload)));
+            } catch { }
+          }
+        } catch (err) {
+          console.error("[LiveViewerModal] WebRTC signaling error:", err);
         }
       })
       .subscribe();
@@ -226,44 +236,40 @@ function useScreenBroadcaster(userId: string | undefined, stream: MediaStream | 
   useEffect(() => {
     if (!userId || !stream) return;
 
-    let channel: any;
-    let isMounted = true;
+    const channelName = `broadcaster_${userId}_${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+    const channel = supabase
+      .channel(channelName)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "screen_signals",
+        filter: `to_user_id=eq.${userId}`,
+      }, async (payload: any) => {
+        const sig = payload.new;
+        if (sig.to_user_id !== userId) return;
 
-    const setupChannel = async () => {
-      try {
-        channel = supabase.channel(`broadcaster_${userId}`);
-        
-        channel.on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "screen_signals",
-          },
-          async (payload: any) => {
-            if (!isMounted) return;
-            
-            const sig = payload.new;
-            if (sig.to_user_id !== userId) return;
+        try {
+          if (sig.signal_type === "watch_request") {
+            const adminId = sig.from_user_id;
 
-            if (sig.signal_type === "watch_request") {
-              const adminId = sig.from_user_id;
-              const pc = new RTCPeerConnection(RTC_CONFIG);
-              pcsRef.current.set(adminId, pc);
+            const pc = new RTCPeerConnection(RTC_CONFIG);
+            pcsRef.current.set(adminId, pc);
 
-              stream.getTracks().forEach(track => pc.addTrack(track, stream));
+            stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-              pc.onicecandidate = async (e) => {
-                if (e.candidate) {
-                  await (supabase.from("screen_signals") as any).insert({
-                    from_user_id: userId,
-                    to_user_id: adminId,
-                    signal_type: "candidate",
-                    payload: JSON.stringify(e.candidate),
-                  });
-                }
-              };
+            pc.onicecandidate = async (e) => {
+              if (e.candidate) {
+                await (supabase.from("screen_signals") as any).insert({
+                  from_user_id: userId,
+                  to_user_id: adminId,
+                  signal_type: "candidate",
+                  payload: JSON.stringify(e.candidate),
+                });
+              }
+            };
 
+            // Create and set offer only in stable state
+            if (pc.signalingState === "stable") {
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
 
@@ -273,36 +279,36 @@ function useScreenBroadcaster(userId: string | undefined, stream: MediaStream | 
                 signal_type: "offer",
                 payload: JSON.stringify(offer),
               });
-            } else if (sig.signal_type === "answer") {
-              const pc = pcsRef.current.get(sig.from_user_id);
-              if (pc) await pc.setRemoteDescription(JSON.parse(sig.payload));
-            } else if (sig.signal_type === "candidate") {
-              const pc = pcsRef.current.get(sig.from_user_id);
-              if (pc) {
-                try { await pc.addIceCandidate(JSON.parse(sig.payload)); } catch { }
-              }
+            }
+
+          } else if (sig.signal_type === "answer") {
+            const pc = pcsRef.current.get(sig.from_user_id);
+            if (pc && pc.signalingState === "have-local-offer") {
+              await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(sig.payload)));
+            }
+
+          } else if (sig.signal_type === "candidate") {
+            const pc = pcsRef.current.get(sig.from_user_id);
+            if (pc) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(sig.payload)));
+              } catch { }
             }
           }
-        );
-
-        await channel.subscribe();
-      } catch (error) {
-        console.error("Failed to setup broadcaster channel:", error);
-      }
-    };
-
-    setupChannel();
+        } catch (err) {
+          console.error("[useScreenBroadcaster] WebRTC signaling error:", err);
+        }
+      })
+      .subscribe();
 
     return () => {
-      isMounted = false;
-      if (channel) {
-        channel.unsubscribe();
-      }
+      supabase.removeChannel(channel);
       pcsRef.current.forEach(pc => pc.close());
       pcsRef.current.clear();
     };
   }, [userId, stream]);
 }
+
 // ── Main ScreenMonitor Page ───────────────────────────────────────────────────
 export default function ScreenMonitor() {
   const [bdes, setBdes] = useState<BdeStatus[]>([]);
@@ -310,7 +316,6 @@ export default function ScreenMonitor() {
   const [stats, setStats] = useState({ activeCount: 0, idleCount: 0, totalEventsToday: 0 });
   const [loading, setLoading] = useState(true);
   const [watchingUser, setWatchingUser] = useState<BdeStatus | null>(null);
-
   const [myStream, setMyStream] = useState<MediaStream | null>(null);
   const [myUserId, setMyUserId] = useState<string | undefined>();
 
