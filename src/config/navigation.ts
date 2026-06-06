@@ -144,6 +144,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "Dashboard", url: "/warehouse/dashboard", icon: LayoutDashboard },
       { title: "Receiving Goods", url: "/warehouse/receiving", icon: PackageCheck },
+      { title: "Packing Management", url: "/warehouse/packing", icon: Package },
     ],
   },
   {

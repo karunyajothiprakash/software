@@ -90,6 +90,7 @@ import LowStockAlerts from "./pages/inventory/LowStockAlerts";
 import DamagedStock from "./pages/inventory/DamagedStock";
 import WarehouseDashboard from "./pages/warehouse/WarehouseDashboard";
 import ReceivingGoods from "./pages/warehouse/ReceivingGoods";
+import PackingManagement from "./pages/warehouse/PackingManagement";
 
 // Quotations
 import QuotationsList from "./pages/quotations/QuotationsList";
@@ -250,6 +251,7 @@ const App = () => (
               {/* Warehouse */}
               <Route path="/warehouse/dashboard" element={<WarehouseDashboard />} />
               <Route path="/warehouse/receiving" element={<ReceivingGoods />} />
+              <Route path="/warehouse/packing" element={<PackingManagement />} />
 
               {/* Quotations */}
               <Route path="/quotations" element={<QuotationsList />} />

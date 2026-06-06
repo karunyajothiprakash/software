@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
 import Card from "@/components/Card";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,13 @@ import {
     Image as ImageIcon,
     List,
     Plus,
-    Loader2
+    Loader2,
+    Trash2,
+    AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
 const STAGES = [
     { id: "supplier", label: "Supplier", icon: Truck },
@@ -33,13 +36,48 @@ const STAGES = [
 
 export default function ReceivingGoods() {
     const queryClient = useQueryClient();
+    const { profile } = useAuth();
     const [activeTab, setActiveTab] = useState<"entry" | "list">("entry");
     const [savedStocks, setSavedStocks] = useState<any[]>([]);
+
+    // Fetch products and warehouses using useQuery
+    const { data: products = [], isLoading: productsLoading, error: productsError } = useQuery({
+        queryKey: ["warehouse-products"],
+        queryFn: async () => {
+            try {
+                const { data, error } = await supabase.from('products').select('id, name').limit(1);
+                if (error) throw error;
+                return data || [];
+            } catch (err: any) {
+                console.error("Error fetching products:", err);
+                return [];
+            }
+        }
+    });
+
+    const { data: warehouses = [], isLoading: warehousesLoading, error: warehousesError } = useQuery({
+        queryKey: ["warehouse-locations"],
+        queryFn: async () => {
+            try {
+                const { data, error } = await supabase.from('warehouses').select('id, name').limit(1);
+                if (error) throw error;
+                return data || [];
+            } catch (err: any) {
+                console.error("Error fetching warehouses:", err);
+                return [];
+            }
+        }
+    });
 
     useEffect(() => {
         const saved = localStorage.getItem("warehouseStockEntries");
         if (saved) {
-            setSavedStocks(JSON.parse(saved));
+            try {
+                setSavedStocks(JSON.parse(saved));
+            } catch (e) {
+                console.error("Error parsing saved stocks:", e);
+                setSavedStocks([]);
+            }
         }
     }, []);
 
@@ -68,30 +106,50 @@ export default function ReceivingGoods() {
         if (currentStage < STAGES.length - 1) {
             setCurrentStage(prev => prev + 1);
         } else {
+            // Validate required fields before submission
+            if (!formData.receivedQty) {
+                toast.error("Please enter received quantity");
+                return;
+            }
+            if (!formData.qualityStatus) {
+                toast.error("Please select quality status");
+                return;
+            }
+
             setIsSubmitting(true);
             try {
-                // Fetch defaults for required DB fields
-                // @ts-ignore
-                const { data: products } = await supabase.from('products').select('id').limit(1);
-                // @ts-ignore
-                const { data: warehouses } = await supabase.from('warehouses').select('id').limit(1);
+                // Get company ID from profile
+                let company_id = profile?.company_id;
 
-                const { data: { session } } = await supabase.auth.getSession();
-                const userId = session?.user?.id;
-                let company_id = null;
+                if (!company_id) {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const userId = session?.user?.id;
 
-                if (userId) {
-                    const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', userId).single();
-                    company_id = profile?.company_id;
+                    if (userId) {
+                        const { data: profileData, error: profileError } = await supabase
+                            .from('profiles')
+                            .select('company_id')
+                            .eq('id', userId)
+                            .single();
+                        
+                        if (profileError) throw profileError;
+                        company_id = profileData?.company_id;
+                    }
+                }
+
+                // Validate we have required references
+                if (!products?.[0]?.id || !warehouses?.[0]?.id) {
+                    toast.error("Products or warehouses not available. Please ensure they are configured.");
+                    setIsSubmitting(false);
+                    return;
                 }
 
                 // Insert into real database
-                // @ts-ignore
                 const { error } = await supabase.from("inventory_batches").insert({
                     company_id,
                     lot_number: formData.batchNumber,
-                    product_id: products?.[0]?.id,
-                    warehouse_id: warehouses?.[0]?.id,
+                    product_id: products[0].id,
+                    warehouse_id: warehouses[0].id,
                     quantity_kg: Number(formData.receivedQty) || 0,
                     quantity_remaining_kg: Number(formData.receivedQty) || 0,
                     status: formData.qualityStatus === 'pass' ? 'qc_passed' : 'pending_qc',
@@ -99,7 +157,10 @@ export default function ReceivingGoods() {
                     received_date: formData.entryDate
                 });
 
-                if (error) throw error;
+                if (error) {
+                    console.error("Database insert error:", error);
+                    throw error;
+                }
 
                 // Also save to local storage for the list display
                 const newEntry = { ...formData, id: new Date().getTime() };
@@ -129,7 +190,7 @@ export default function ReceivingGoods() {
                 }, 1500);
             } catch (err: any) {
                 console.error("Backend error:", err);
-                toast.error(err.message || "Failed to save to database. Please check your connection.");
+                toast.error(err.message || "Failed to save to database. Please check your connection and try again.");
             } finally {
                 setIsSubmitting(false);
             }
@@ -149,6 +210,21 @@ export default function ReceivingGoods() {
                 description="Process incoming shipments, perform quality checks, and allocate to stock"
                 breadcrumbs={[{ label: "Warehouse" }, { label: "Receiving" }]}
             />
+
+            {/* Show warnings if data is missing */}
+            {(productsError || warehousesError || (!productsLoading && products.length === 0) || (!warehousesLoading && warehouses.length === 0)) && (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-semibold text-amber-600">Configuration Required</p>
+                        <p className="text-sm text-amber-600/80">
+                            {!productsLoading && products.length === 0 && "No products configured. "}
+                            {!warehousesLoading && warehouses.length === 0 && "No warehouses configured. "}
+                            Please set up products and warehouses before receiving goods.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Tabs */}
             <div className="flex space-x-1 p-1 bg-muted/30 rounded-lg max-w-sm border border-border">
@@ -405,8 +481,8 @@ export default function ReceivingGoods() {
 
                             <Button
                                 onClick={nextStage}
-                                disabled={isSubmitting}
-                                className={currentStage === STAGES.length - 1 ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                                disabled={isSubmitting || (currentStage === STAGES.length - 1 && (products.length === 0 || warehouses.length === 0))}
+                                className={currentStage === STAGES.length - 1 ? "bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed" : ""}
                             >
                                 {isSubmitting ? (
                                     <>Saving... <Loader2 className="w-4 h-4 ml-2 animate-spin" /></>
