@@ -100,6 +100,8 @@ import MultiWarehouse from "./pages/inventory/MultiWarehouse";
 import WarehouseDashboard from "./pages/warehouse/WarehouseDashboard";
 import WarehouseRacks from "./pages/warehouse/WarehouseRacks";
 import WarehouseZones from "./pages/warehouse/WarehouseZones";
+import ReceivingGoods from "./pages/warehouse/ReceivingGoods";
+import PackingManagement from "./pages/warehouse/PackingManagement";
 
 // Quotations
 import QuotationsList from "./pages/quotations/QuotationsList";
@@ -142,6 +144,7 @@ import FinancialReports from "./pages/payments/FinancialReports";
 import EmployeeDirectory from "./pages/employees/EmployeeDirectory";
 import Attendance from "./pages/employees/Attendance";
 import RolesPermissions from "./pages/employees/RolesPermissions";
+import FaceAttendanceGuard from '@/guards/FaceAttendanceGuard';
 import FaceAttendance from "./pages/FaceAttendance.tsx";
 import RegisterFace from "./pages/RegisterFace.tsx";
 
@@ -269,6 +272,8 @@ const App = () => (
               <Route path="/warehouse/dashboard" element={<WarehouseDashboard />} />
               <Route path="/warehouse/racks" element={<WarehouseRacks />} />
               <Route path="/warehouse/zones" element={<WarehouseZones />} />
+              <Route path="/warehouse/receiving" element={<ReceivingGoods />} />
+              <Route path="/warehouse/packing" element={<PackingManagement />} />
               <Route path="/warehouse" element={<Navigate to="/warehouse/dashboard" replace />} />
 
               {/* Quotations */}
@@ -348,7 +353,7 @@ const App = () => (
               {/* Employees */}
               <Route path="/employees" element={<EmployeeDirectory />} />
               <Route path="/employees/attendance" element={<Attendance />} />
-              <Route path="/employees/face-attendance" element={<FaceAttendance />} />
+              <Route path="/employees/face-attendance" element={<FaceAttendanceGuard><FaceAttendance /></FaceAttendanceGuard>} />
               <Route path="/employees/register-face" element={<RegisterFace />} />
               <Route path="/employees/roles" element={<RolesPermissions />} />
 
