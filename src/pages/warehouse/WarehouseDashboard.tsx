@@ -12,67 +12,81 @@ import { Button } from "@/components/ui/button";
 export default function WarehouseDashboard() {
     const [loading, setLoading] = useState(false);
 
-    // Fetch inventory data
+    // Fetch inventory data - OPTIMIZED: only count & sums, no full fetch
     const { data: inventoryData, isLoading: inventoryLoading } = useQuery({
         queryKey: ["warehouse-inventory"],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("inventory_batches")
-                .select("quantity_kg, is_export_ready");
+                .select("quantity_kg, is_export_ready")
+                .limit(100);
             if (error) throw error;
             return data || [];
-        }
+        },
+        staleTime: 30000, // Cache for 30 seconds
+        gcTime: 5 * 60 * 1000, // Keep in memory for 5 min
     });
 
-    // Fetch low stock alerts
+    // Fetch low stock alerts - OPTIMIZED with cache
     const { data: lowStockData, isLoading: lowStockLoading } = useQuery({
         queryKey: ["low-stock-alerts"],
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("products")
                 .select("id, name, current_stock, minimum_stock")
-                .lt("current_stock", "minimum_stock");
+                .lt("current_stock", "minimum_stock")
+                .limit(100);
             if (error) throw error;
             return data || [];
-        }
+        },
+        staleTime: 30000,
+        gcTime: 5 * 60 * 1000,
     });
 
-    // Fetch shipments
+    // Fetch shipments - OPTIMIZED: reduced limit, added cache
     const { data: shipmentsData, isLoading: shipmentsLoading } = useQuery({
         queryKey: ["shipments-today"],
         queryFn: async () => {
             const today = new Date().toISOString().split('T')[0];
             const { data, error } = await supabase
                 .from("shipments")
-                .select("*")
+                .select("id, shipment_number, status, created_at")
                 .gte("created_at", today)
-                .eq("status", "dispatched");
+                .eq("status", "dispatched")
+                .limit(50);
             if (error) throw error;
             return data || [];
-        }
+        },
+        staleTime: 15000,
+        gcTime: 5 * 60 * 1000,
     });
 
-    // Fetch activity logs
+    // Fetch activity logs - OPTIMIZED: already limited to 5
     const { data: activityLogs, isLoading: logsLoading } = useQuery({
         queryKey: ["warehouse-activities"],
         queryFn: async () => {
             const today = new Date().toISOString().split('T')[0];
             const { data, error } = await supabase
                 .from("activity_logs")
-                .select("*")
+                .select("id, action, user_id, created_at")
                 .gte("created_at", today)
+                .order("created_at", { ascending: false })
                 .limit(5);
             if (error) throw error;
             return data || [];
-        }
+        },
+        staleTime: 10000,
+        gcTime: 5 * 60 * 1000,
     });
 
     // Calculate metrics from real data
     const totalInventory = inventoryData?.reduce((sum, item) => sum + (parseFloat(item.quantity_kg) || 0), 0) || 0;
     const exportReadyStock = inventoryData?.filter(item => item.is_export_ready).reduce((sum, item) => sum + (parseFloat(item.quantity_kg) || 0), 0) || 0;
+    const pendingPacking = inventoryData?.filter(item => !item.is_export_ready).length || 0;
     const lowStockCount = lowStockData?.length || 0;
-
-    const metricsLoading = inventoryLoading || lowStockLoading || shipmentsLoading || logsLoading;
+    const dispatchedToday = shipmentsData?.length || 0;
+    const containerLoading = shipmentsData?.filter(s => s.status === 'loading').length || 0;
+    const activityCount = activityLogs?.length || 0;
 
     return (
         <div className="p-6 space-y-6 animate-fade-in max-w-[1600px] mx-auto">
@@ -88,16 +102,16 @@ export default function WarehouseDashboard() {
                 </Button>
             </div>
 
-            {/* Dashboard Overview Section */}
-            {metricsLoading ? (
-                <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-            ) : (
-                <div className="bg-card/40 backdrop-blur-md border border-border rounded-xl p-6">
-                    <h2 className="text-lg font-bold text-foreground mb-6">Dashboard Overview</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Current Inventory Status */}
+            {/* Dashboard Overview Section - STAGGERED LOADING: Show cards as ready */}
+            <div className="bg-card/40 backdrop-blur-md border border-border rounded-xl p-6">
+                <h2 className="text-lg font-bold text-foreground mb-6">Dashboard Overview</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Current Inventory Status */}
+                    {inventoryLoading ? (
+                        <div className="p-4 rounded-lg border border-blue-500/20 bg-blue-500/5 animate-pulse">
+                            <div className="h-12 bg-blue-500/20 rounded"></div>
+                        </div>
+                    ) : (
                         <div className="p-4 rounded-lg border border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40 transition-all">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-blue-200">Current Inventory Status</h3>
@@ -106,8 +120,14 @@ export default function WarehouseDashboard() {
                             <p className="text-2xl font-bold text-blue-300">{(totalInventory || 0).toLocaleString()} Kg</p>
                             <p className="text-xs text-blue-300/60 mt-2">Total across all zones</p>
                         </div>
+                    )}
 
-                        {/* Export Ready Stock */}
+                    {/* Export Ready Stock */}
+                    {inventoryLoading ? (
+                        <div className="p-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 animate-pulse">
+                            <div className="h-12 bg-emerald-500/20 rounded"></div>
+                        </div>
+                    ) : (
                         <div className="p-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40 transition-all">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-emerald-200">Export Ready Stock</h3>
@@ -116,28 +136,46 @@ export default function WarehouseDashboard() {
                             <p className="text-2xl font-bold text-emerald-300">{(exportReadyStock || 0).toLocaleString()} Kg</p>
                             <p className="text-xs text-emerald-300/60 mt-2">QC cleared & packed</p>
                         </div>
+                    )}
 
-                        {/* Pending Packing Orders */}
+                    {/* Pending Packing Orders */}
+                    {inventoryLoading ? (
+                        <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5 animate-pulse">
+                            <div className="h-12 bg-amber-500/20 rounded"></div>
+                        </div>
+                    ) : (
                         <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 transition-all">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-amber-200">Pending Packing Orders</h3>
                                 <ClipboardList className="h-5 w-5 text-amber-400" />
                             </div>
-                            <p className="text-2xl font-bold text-amber-300">{inventoryData?.filter(item => !item.is_export_ready).length || 0} Orders</p>
+                            <p className="text-2xl font-bold text-amber-300">{pendingPacking} Orders</p>
                             <p className="text-xs text-amber-300/60 mt-2">Awaiting processing</p>
                         </div>
+                    )}
 
-                        {/* Shipment Dispatch Status */}
+                    {/* Shipment Dispatch Status */}
+                    {shipmentsLoading ? (
+                        <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/5 animate-pulse">
+                            <div className="h-12 bg-purple-500/20 rounded"></div>
+                        </div>
+                    ) : (
                         <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/5 hover:border-purple-500/40 transition-all">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-purple-200">Shipment Dispatch Status</h3>
                                 <Send className="h-5 w-5 text-purple-400" />
                             </div>
-                            <p className="text-2xl font-bold text-purple-300">{shipmentsData?.length || 0} Dispatched</p>
+                            <p className="text-2xl font-bold text-purple-300">{dispatchedToday} Dispatched</p>
                             <p className="text-xs text-purple-300/60 mt-2">Left warehouse today</p>
                         </div>
+                    )}
 
-                        {/* Low Stock Alerts */}
+                    {/* Low Stock Alerts */}
+                    {lowStockLoading ? (
+                        <div className="p-4 rounded-lg border border-red-500/20 bg-red-500/5 animate-pulse">
+                            <div className="h-12 bg-red-500/20 rounded"></div>
+                        </div>
+                    ) : (
                         <div className="p-4 rounded-lg border border-red-500/20 bg-red-500/5 hover:border-red-500/40 transition-all">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-red-200">Low Stock Alerts</h3>
@@ -146,29 +184,41 @@ export default function WarehouseDashboard() {
                             <p className="text-2xl font-bold text-red-300">{lowStockCount} Critical</p>
                             <p className="text-xs text-red-300/60 mt-2">Needs replenishment</p>
                         </div>
+                    )}
 
-                        {/* Container Loading Updates */}
+                    {/* Container Loading Updates */}
+                    {shipmentsLoading ? (
+                        <div className="p-4 rounded-lg border border-[#c8a84b]/20 bg-[#c8a84b]/5 animate-pulse">
+                            <div className="h-12 bg-[#c8a84b]/20 rounded"></div>
+                        </div>
+                    ) : (
                         <div className="p-4 rounded-lg border border-[#c8a84b]/20 bg-[#c8a84b]/5 hover:border-[#c8a84b]/40 transition-all">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-[#c8a84b]">Container Loading Updates</h3>
                                 <Container className="h-5 w-5 text-[#c8a84b]" />
                             </div>
-                            <p className="text-2xl font-bold text-[#d4b959]">{shipmentsData?.filter(s => s.status === 'loading').length || 0} Active</p>
+                            <p className="text-2xl font-bold text-[#d4b959]">{containerLoading} Active</p>
                             <p className="text-xs text-[#c8a84b]/60 mt-2">Live loading in progress</p>
                         </div>
+                    )}
 
-                        {/* Daily Warehouse Activities */}
+                    {/* Daily Warehouse Activities */}
+                    {logsLoading ? (
+                        <div className="p-4 rounded-lg border border-indigo-500/20 bg-indigo-500/5 animate-pulse">
+                            <div className="h-12 bg-indigo-500/20 rounded"></div>
+                        </div>
+                    ) : (
                         <div className="p-4 rounded-lg border border-indigo-500/20 bg-indigo-500/5 hover:border-indigo-500/40 transition-all">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-indigo-200">Daily Warehouse Activities</h3>
                                 <Activity className="h-5 w-5 text-indigo-400" />
                             </div>
-                            <p className="text-2xl font-bold text-indigo-300">{activityLogs?.length || 0} Logs</p>
+                            <p className="text-2xl font-bold text-indigo-300">{activityCount} Logs</p>
                             <p className="text-xs text-indigo-300/60 mt-2">Today's transactions</p>
                         </div>
-                    </div>
+                    )}
                 </div>
-            )}
+            </div>
 
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -38,7 +38,9 @@ export async function getStockSummaryData(filters: {
       query = query.lte("received_date", filters.date_to);
     }
 
-    const { data, error } = await query.order("received_date", { ascending: false });
+    const { data, error } = await query
+      .order("received_date", { ascending: false })
+      .limit(5000);
 
     if (error) throw error;
 
@@ -94,19 +96,38 @@ export async function getBatchTrackingData(filters: {
       query = query.eq("company_id", filters.company_id);
     }
 
-    const { data, error } = await query.order("received_date", { ascending: false });
+    const { data, error } = await query
+      .order("received_date", { ascending: false })
+      .limit(500);
 
     if (error) throw error;
 
-    // Enrich with movement history
-    const enrichedData = await Promise.all((data || []).map(async (batch) => {
-      const { data: movements } = await supabase
-        .from("inventory_movements")
-        .select("*")
-        .eq("batch_id", batch.id)
-        .order("created_at", { ascending: false });
+    // Enrich with movement history using single query with left join
+    const batchIds = (data || []).map(b => b.id);
+    
+    if (batchIds.length === 0) {
+      return [];
+    }
 
-      return { ...batch, movements: movements || [] };
+    const { data: movements, error: movementError } = await supabase
+      .from("inventory_movements")
+      .select("*")
+      .in("batch_id", batchIds)
+      .order("created_at", { ascending: false });
+
+    if (movementError) throw movementError;
+
+    // Group movements by batch_id
+    const movementsByBatch = (movements || []).reduce((acc, movement) => {
+      if (!acc[movement.batch_id]) acc[movement.batch_id] = [];
+      acc[movement.batch_id].push(movement);
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    // Enrich data with grouped movements
+    const enrichedData = (data || []).map(batch => ({
+      ...batch,
+      movements: movementsByBatch[batch.id] || []
     }));
 
     return enrichedData;
@@ -156,7 +177,9 @@ export async function getDispatchReportData(filters: {
       query = query.lte("created_at", filters.date_to);
     }
 
-    const { data, error } = await query.order("created_at", { ascending: false });
+    const { data, error } = await query
+      .order("created_at", { ascending: false })
+      .limit(1000);
 
     if (error) throw error;
 
@@ -202,7 +225,9 @@ export async function getContainerLoadingData(filters: {
       query = query.eq("company_id", filters.company_id);
     }
 
-    const { data, error } = await query.order("created_at", { ascending: false });
+    const { data, error } = await query
+      .order("created_at", { ascending: false })
+      .limit(1000);
 
     if (error) throw error;
 
@@ -254,7 +279,9 @@ export async function getDamageWastageData(filters: {
       query = query.lte("received_date", filters.date_to);
     }
 
-    const { data, error } = await query.order("received_date", { ascending: false });
+    const { data, error } = await query
+      .order("received_date", { ascending: false })
+      .limit(3000);
 
     if (error) throw error;
 
@@ -299,7 +326,9 @@ export async function getInventoryAgingData(filters: {
       query = query.eq("warehouse_id", filters.warehouse_id);
     }
 
-    const { data, error } = await query.order("received_date", { ascending: true });
+    const { data, error } = await query
+      .order("received_date", { ascending: true })
+      .limit(5000);
 
     if (error) throw error;
 
@@ -366,7 +395,9 @@ export async function getExportReadyStockData(filters: {
       query = query.eq("product_id", filters.product_id);
     }
 
-    const { data, error } = await query.order("received_date", { ascending: true });
+    const { data, error } = await query
+      .order("received_date", { ascending: true })
+      .limit(5000);
 
     if (error) throw error;
 
