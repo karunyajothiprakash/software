@@ -115,6 +115,8 @@ export const navGroups: NavGroup[] = [
       { title: "Inspections", url: "/qc/inspections", icon: ClipboardCheck, permission: "qc.view" },
       { title: "New Inspection", url: "/qc/inspections/create", icon: FlaskConical, permission: "qc.inspect" },
       { title: "Approvals", url: "/qc/approvals", icon: BadgeCheck, permission: "qc.approve" },
+      { title: "WH Quality Control", url: "/warehouse/qc", icon: FlaskConical, permission: "qc.inspect" },
+      { title: "Container Loading", url: "/warehouse/container-loading", icon: Container, permission: "shipments.manage" },
     ],
   },
   {

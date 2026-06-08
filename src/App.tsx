@@ -71,6 +71,8 @@ import SupplierDetail from "./pages/procurement/SupplierDetail";
 import SupplierAnalytics from "./pages/procurement/SupplierAnalytics";
 
 import InspectionsList from "./pages/qc/InspectionsList";
+import QualityControlWarehouse from "./pages/inventory/QualityControl";
+import ContainerLoading from "./pages/inventory/ContainerLoading";
 import CreateInspection from "./pages/qc/CreateInspection";
 import QCApprovals from "./pages/qc/QCApprovals";
 
@@ -257,6 +259,8 @@ const App = () => (
               <Route path="/qc/inspections" element={<InspectionsList />} />
               <Route path="/qc/inspections/create" element={<CreateInspection />} />
               <Route path="/qc/approvals" element={<QCApprovals />} />
+              <Route path="/warehouse/qc" element={<QualityControlWarehouse />} />
+              <Route path="/warehouse/container-loading" element={<ContainerLoading />} />
 
               {/* Barcode & Tracking */}
               <Route path="/barcodes" element={<BarcodesList />} />
