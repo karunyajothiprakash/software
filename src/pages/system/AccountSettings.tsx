@@ -17,9 +17,7 @@ const tabs = [
   { id: 'security', label: 'Login & Security', icon: Lock },
   { id: 'notifications', label: 'Notification Preferences', icon: Bell },
   { id: 'preferences', label: 'Preferences', icon: Globe },
-  { id: 'signature', label: 'Email Signature', icon: Mail },
   { id: 'activity', label: 'My Activity Log', icon: Activity },
-  { id: 'access', label: 'Access Information', icon: Shield },
 ];
 
 export default function AccountSettings() {
@@ -37,6 +35,8 @@ export default function AccountSettings() {
   const [officialEmail, setOfficialEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [dob, setDob] = useState("");
+  const [joiningDate, setJoiningDate] = useState("");
 
   // Security
   const [newPassword, setNewPassword] = useState("");
@@ -72,6 +72,8 @@ export default function AccountSettings() {
       setSignature(profile.email_signature || "");
       setEmployeeId(profile.biometric_id || ""); // Using biometric_id as employee ID for now
       setDesignation(profile.requested_role || "");
+      setDob(profile.dob || "");
+      setJoiningDate(profile.joining_date || "");
     }
     setLoading(false);
   }, [profile, user]);
@@ -170,6 +172,8 @@ export default function AccountSettings() {
       // We can map designation to requested_role and employee ID to biometric_id for persistence
       requested_role: designation,
       biometric_id: employeeId,
+      dob: dob || null,
+      joining_date: joiningDate || null,
     };
 
     const { error } = await supabase.from('profiles').update(updates).eq('id', profile.id);
@@ -358,6 +362,14 @@ export default function AccountSettings() {
                     <Label>Official Email</Label>
                     <Input value={officialEmail} disabled className="bg-muted/50 text-muted-foreground" />
                   </div>
+                  <div className="space-y-2">
+                    <Label>Date of Birth</Label>
+                    <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date of Joining</Label>
+                    <Input type="date" value={joiningDate} onChange={e => setJoiningDate(e.target.value)} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -508,64 +520,7 @@ export default function AccountSettings() {
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Theme</Label>
-                    <Select value={theme} onValueChange={setTheme}>
-                      <SelectTrigger><SelectValue placeholder="Select theme" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="light">Light Mode</SelectItem>
-                        <SelectItem value="dark">Dark Mode</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Dashboard Layout</Label>
-                    <Select value={dashboardLayout} onValueChange={setDashboardLayout}>
-                      <SelectTrigger><SelectValue placeholder="Select layout" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="default">Default</SelectItem>
-                        <SelectItem value="compact">Compact</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'signature' && (
-            <div className="p-6 md:p-8 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">Email Signature</h2>
-                  <p className="text-sm text-muted-foreground">Customize your signature for outbound emails and quotations.</p>
-                </div>
-                <Button onClick={handleSaveSignature} disabled={saving} className="bg-[#2563eb] hover:bg-blue-700">
-                  {saving ? "Saving..." : "Save Signature"}
-                </Button>
-              </div>
-
-              <div className="grid gap-8">
-                <div className="space-y-3">
-                  <Label>Rich Text Signature</Label>
-                  <textarea 
-                    value={signature} 
-                    onChange={e => setSignature(e.target.value)} 
-                    className="w-full min-h-[150px] p-3 rounded-md border border-input bg-transparent text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    placeholder="E.g. Thanks & Regards,\n[Your Name]\n[Your Designation]"
-                  />
-                  <p className="text-xs text-muted-foreground">HTML tags are supported.</p>
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Company Info</Label>
-                  <Input value={companyInfo} onChange={e => setCompanyInfo(e.target.value)} disabled className="bg-muted/50" />
-                </div>
-
-                <Section title="Preview">
-                  <div className="p-6 border rounded-lg bg-muted/50 prose prose-sm max-w-none text-slate-800" dangerouslySetInnerHTML={{ __html: signature || "<p class='text-muted-foreground italic'>No signature configured.</p>" }} />
-                </Section>
               </div>
             </div>
           )}
@@ -609,49 +564,6 @@ export default function AccountSettings() {
             </div>
           )}
 
-          {activeTab === 'access' && (
-            <div className="p-6 md:p-8 animate-in fade-in duration-300">
-              <h2 className="text-xl font-semibold text-foreground mb-1">Access Information</h2>
-              <p className="text-sm text-muted-foreground mb-6">Your current roles and permissions within the ERP.</p>
-
-              <div className="grid gap-6 max-w-2xl">
-                <div className="grid grid-cols-3 gap-4 border-b pb-4">
-                  <div className="text-sm font-medium text-muted-foreground">Current Role</div>
-                  <div className="col-span-2 flex items-center gap-2">
-                    <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
-                      {profile?.requested_role ? profile.requested_role.toUpperCase() : "STANDARD USER"}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 border-b pb-4">
-                  <div className="text-sm font-medium text-muted-foreground">Reporting Manager</div>
-                  <div className="col-span-2 text-sm text-foreground">
-                    Not Assigned
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 border-b pb-4">
-                  <div className="text-sm font-medium text-muted-foreground">Last Login</div>
-                  <div className="col-span-2 text-sm text-foreground">
-                    {user?.last_sign_in_at ? format(new Date(user.last_sign_in_at), "MMM d, yyyy h:mm a") : "Unknown"}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-sm font-medium text-muted-foreground">Permissions (Read-only)</div>
-                  <div className="col-span-2">
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline" className="text-muted-foreground">View Dashboards</Badge>
-                      <Badge variant="outline" className="text-muted-foreground">Manage Leads</Badge>
-                      <Badge variant="outline" className="text-muted-foreground">View Inventory</Badge>
-                      <Badge variant="outline" className="text-muted-foreground">Create Quotations</Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
         </div>
       </div>

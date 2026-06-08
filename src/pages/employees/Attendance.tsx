@@ -78,7 +78,8 @@ const getEmployeeMonthStats = (
 ) => {
   const empLogs = allLogs[empId] || {};
   const monthlySalary = Number(emp.monthly_salary) || getEmpSalary(emp.full_name) || 0;
-  const perDay = Math.round(monthlySalary / 26); // 26 working days (Sundays excluded)
+  const isPreethi = emp.full_name?.toLowerCase().includes("preethi");
+    const perDay = Math.round(monthlySalary / (isPreethi ? 22 : 26)); // 22 for Preethi, 26 for others
   const halfDay = Math.round(perDay / 2);
   const deadline = emp.punch_deadline || (emp.full_name?.toLowerCase().startsWith("preethi") ? "10:00:00" : "08:00:00");
 
@@ -175,7 +176,8 @@ const getEmployeeMonthStats = (
         }
       } else {
         // Absent (log exists but no clock_in and not on_leave)
-        const isSunday = new Date(dateStr).getDay() === 0;
+        const d = new Date(dateStr);
+        const isSunday = d.getDay() === 0 || (isPreethi && d.getDay() === 6);
         const isTodayOrFuture = dateStr >= format(new Date(), 'yyyy-MM-dd');
         const isPenaltyFree = isSunday || isTodayOrFuture;
         
@@ -187,12 +189,13 @@ const getEmployeeMonthStats = (
           cut: isPenaltyFree ? 0 : perDay,
           isExcused: false,
           minutesLate: 0,
-          explanation: isSunday ? 'Sunday (Holiday)' : (isTodayOrFuture ? 'Pending / Today' : 'Absent (No clock in)')
+          explanation: isSunday ? 'Weekend (Holiday)' : (isTodayOrFuture ? 'Pending / Today' : 'Absent (No clock in)')
         };
       }
     } else {
       // Absent / No record
-      const isSunday = new Date(dateStr).getDay() === 0;
+      const d = new Date(dateStr);
+        const isSunday = d.getDay() === 0 || (isPreethi && d.getDay() === 6);
       const isTodayOrFuture = dateStr >= format(new Date(), 'yyyy-MM-dd');
       const isPenaltyFree = isSunday || isTodayOrFuture;
       
@@ -204,7 +207,7 @@ const getEmployeeMonthStats = (
         cut: isPenaltyFree ? 0 : perDay,
         isExcused: false,
         minutesLate: 0,
-        explanation: isSunday ? 'Sunday (Holiday)' : (isTodayOrFuture ? 'Pending / Today' : 'Absent (No record)')
+        explanation: isSunday ? 'Weekend (Holiday)' : (isTodayOrFuture ? 'Pending / Today' : 'Absent (No record)')
       };
     }
   });
@@ -351,6 +354,27 @@ export default function Attendance() {
     }
   };
 
+  const handleMarkOD = async (emp: any) => {
+    const todayStr = endDate;
+    try {
+      const clockInTime = new Date(`${todayStr}T08:00:00`).toISOString();
+      const { error } = await supabase.from('attendance_logs').upsert({
+        employee_id: emp.id,
+        date: todayStr,
+        clock_in: clockInTime,
+        status: 'present',
+        is_manual: true,
+        notes: 'Field Trip (OD)'
+      });
+
+      if (error) throw error;
+      toast.success("Marked as OD / Field Trip");
+      await loadData(startDate, endDate);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to mark OD");
+    }
+  };
+
   const handleToggleExcused = async (logId: string, checked: boolean) => {
     try {
       const { error } = await supabase
@@ -401,7 +425,8 @@ export default function Attendance() {
     const rows = employees.map(emp => {
       const log = attendanceData[emp.id]?.[todayStr];
       const monthlySalary = Number(emp.monthly_salary) || getEmpSalary(emp.full_name) || 0;
-      const perDay = Math.round(monthlySalary / 26); // 26 working days (Sundays excluded)
+      const isPreethi = emp.full_name?.toLowerCase().includes("preethi");
+    const perDay = Math.round(monthlySalary / (isPreethi ? 22 : 26)); // 22 for Preethi, 26 for others
       const deadline = emp.punch_deadline || (emp.full_name?.toLowerCase().startsWith("preethi") ? "10:00:00" : "08:00:00");
       
       const stats = getEmployeeMonthStats(emp.id, todayStr.substring(0, 7), emp, attendanceData, todayStr);
@@ -416,7 +441,11 @@ export default function Attendance() {
       if (detail.status === 'paid_leave') displayStatus = "Paid Leave";
       else if (detail.status === 'unpaid_leave') displayStatus = "Unpaid Leave";
       else if (detail.status === 'present') {
-        displayStatus = log?.is_manual ? "Manual (On Time)" : (detail.isExcused ? "Late (Excused)" : "On Time");
+        if (log?.notes === 'Field Trip (OD)') {
+          displayStatus = "Field Trip (OD)";
+        } else {
+          displayStatus = log?.is_manual ? "Manual (On Time)" : (detail.isExcused ? "Late (Excused)" : "On Time");
+        }
       } else if (detail.status === 'late_cut') {
         displayStatus = log?.is_manual ? "Manual (Late)" : "Late";
       }
@@ -782,6 +811,12 @@ export default function Attendance() {
                       </span>
                     );
                   }
+                } else if (log.notes === 'Field Trip (OD)') {
+                  statusBadge = (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      Field Trip (OD)
+                    </span>
+                  );
                 } else if (log.is_manual) {
                   statusBadge = (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
@@ -923,6 +958,13 @@ export default function Attendance() {
                             className="text-[10px] font-semibold text-purple-600 hover:underline"
                           >
                             Mark Paid Leave
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMarkOD(emp)}
+                            className="text-[10px] font-semibold text-blue-500 hover:underline px-2"
+                          >
+                            Mark OD (Field Trip)
                           </button>
                           <button
                             type="button"

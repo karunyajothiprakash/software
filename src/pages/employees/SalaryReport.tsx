@@ -54,7 +54,8 @@ function calcMonthStats(
 ) {
   const empLogs = allLogs[emp.id] || {};
   const monthlySalary = Number(emp.monthly_salary) || getEmpSalary(emp.full_name) || 0;
-  const workingDays = 26; // 30 days minus ~4 Sundays
+  const isPreethi = emp.full_name?.toLowerCase().includes("preethi");
+    const workingDays = isPreethi ? 22 : 26; // 22 for Preethi, 26 for others
   const perDay = Math.round(monthlySalary / workingDays);
   const halfDay = Math.round(perDay / 2);
   const deadline = emp.punch_deadline || (emp.full_name?.toLowerCase().startsWith("preethi") ? "10:00:00" : "08:00:00");
@@ -66,8 +67,15 @@ function calcMonthStats(
   const today = new Date();
   const calcEnd = monthEnd < today ? monthEnd : today;
 
+  // Enforce company system start date of June 1, 2026
+  const systemStartStr = emp.joining_date || '2026-06-01';
+  const [sy, sm, sd] = systemStartStr.split('-').map(Number);
+  const systemStartDate = new Date(sy, sm - 1, sd);
+  
+  const actualStart = monthStart < systemStartDate ? systemStartDate : monthStart;
+
   const days: string[] = [];
-  let curr = new Date(monthStart);
+  let curr = new Date(actualStart);
   while (curr <= calcEnd) {
     // Skip Sundays (0 = Sunday)
     if (curr.getDay() !== 0) {
