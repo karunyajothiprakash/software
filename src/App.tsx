@@ -154,6 +154,7 @@ import FinancialReports from "./pages/payments/FinancialReports";
 // Employees
 import EmployeeDirectory from "./pages/employees/EmployeeDirectory";
 import Attendance from "./pages/employees/Attendance";
+import SalaryReport from "./pages/employees/SalaryReport";
 import RolesPermissions from "./pages/employees/RolesPermissions";
 import FaceAttendanceGuard from '@/guards/FaceAttendanceGuard';
 import FaceAttendance from "./pages/FaceAttendance.tsx";
@@ -375,6 +376,7 @@ const App = () => (
               {/* Employees */}
               <Route path="/employees" element={<EmployeeDirectory />} />
               <Route path="/employees/attendance" element={<Attendance />} />
+              <Route path="/employees/salary" element={<SalaryReport />} />
               <Route path="/employees/face-attendance" element={<FaceAttendanceGuard><FaceAttendance /></FaceAttendanceGuard>} />
               <Route path="/employees/register-face" element={<RegisterFace />} />
               <Route path="/employees/roles" element={<RolesPermissions />} />
