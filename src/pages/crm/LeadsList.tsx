@@ -986,18 +986,20 @@ export default function LeadsList() {
                           Convert
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 hover:bg-destructive/10"
-                        onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          confirmDelete(lead.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive opacity-50 hover:opacity-100" />
-                      </Button>
+                      {isPrivileged && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-destructive/10"
+                          onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            confirmDelete(lead.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive opacity-50 hover:opacity-100" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
