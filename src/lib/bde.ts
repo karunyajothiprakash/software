@@ -33,7 +33,7 @@ export async function fetchBdeProfiles(supabase: any) {
     }
 
     const userIds = userRoles?.map((ur: any) => ur.user_id) || [];
-    
+
     let finalProfiles = [];
 
     if (userIds.length > 0) {
@@ -69,7 +69,7 @@ export async function fetchBdeProfiles(supabase: any) {
         .or('role.ilike.bde,requested_role.ilike.bde')
 
         .order('full_name');
-      
+
       if (!fError && fallbackProfiles) {
         finalProfiles = fallbackProfiles;
       }
@@ -77,7 +77,7 @@ export async function fetchBdeProfiles(supabase: any) {
 
     // MANDATORY FALLBACK: Ensure the requested names are ALWAYS present in the list 
     // to satisfy the user's immediate requirement regardless of database sync status.
-    const requestedNames = ["Gayathri", "Vemula Navya lahari"];
+    const requestedNames = ["Gayathri", "Vemula Navya Lahari", "Aditi"];
     requestedNames.forEach(name => {
       const exists = finalProfiles.some((p: any) => p.full_name?.toLowerCase() === name.toLowerCase());
       if (!exists) {

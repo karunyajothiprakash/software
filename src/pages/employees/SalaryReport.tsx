@@ -22,7 +22,8 @@ const salaryMap: Record<string, number> = {
   'Preethi M': 30000,
   'sathpreethika': 12000,
   'Swathi Swathi': 8000,
-  'Vemula Navya lahari': 12000,
+  'Vemula Navya Lahari': 12000,
+  'Aditi': 12000,
   'uma parameshwari': 17000
 };
 
@@ -70,7 +71,7 @@ function calcMonthStats(
   const systemStartStr = emp.joining_date || '2026-06-01';
   const [sy, sm, sd] = systemStartStr.split('-').map(Number);
   const systemStartDate = new Date(sy, sm - 1, sd);
-  
+
   const actualStart = monthStart < systemStartDate ? systemStartDate : monthStart;
 
   const days: string[] = [];
@@ -189,7 +190,7 @@ export default function SalaryReport() {
         .eq('status', 'approved')
         .order('full_name');
       if (error) throw error;
-      return (data || []).filter(p => 
+      return (data || []).filter(p =>
         !p.full_name?.toLowerCase().includes("lakshmana gokul") &&
         !!p.biometric_id
       );

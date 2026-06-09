@@ -37,7 +37,8 @@ const salaryMap: Record<string, number> = {
   'Preethi M': 30000,
   'sathpreethika': 12000,
   'Swathi Swathi': 8000,
-  'Vemula Navya lahari': 12000,
+  'Vemula Navya Lahari': 12000,
+  'Aditi': 12000,
   'uma parameshwari': 17000
 };
 
@@ -57,14 +58,14 @@ const getLateMinutes = (clockInStr: string, deadlineStr: string | null) => {
   const deadline = deadlineStr || '08:00:00';
   const [dHours, dMinutes, dSeconds = 0] = deadline.split(':').map(Number);
   const punchDate = new Date(clockInStr);
-  
+
   const deadlineDate = new Date(punchDate);
   deadlineDate.setHours(dHours, dMinutes, dSeconds, 0);
-  
+
   if (punchDate.getTime() <= deadlineDate.getTime()) {
     return 0;
   }
-  
+
   const diffMs = punchDate.getTime() - deadlineDate.getTime();
   return Math.floor(diffMs / (1000 * 60));
 };
@@ -91,11 +92,11 @@ const getEmployeeMonthStats = (
     const [year, month] = monthStr.split('-').map(Number);
     calculationEnd = new Date(year, month, 0);
   }
-  
+
   // Start of month
   const [year, month] = monthStr.split('-').map(Number);
   const calculationStart = new Date(year, month - 1, 1);
-  
+
   // Generate all dates in the month up to calculationEnd
   const days: string[] = [];
   let curr = calculationStart;
@@ -119,12 +120,12 @@ const getEmployeeMonthStats = (
 
   days.forEach(dateStr => {
     const log = empLogs[dateStr];
-    
+
     const systemStartStr = emp.joining_date || '2026-06-01';
     if (dateStr < systemStartStr) {
       const d = new Date(dateStr);
       const isSunday = d.getDay() === 0 || (isPreethi && d.getDay() === 6);
-      
+
       dailyDetails[dateStr] = {
         status: 'absent',
         cut: 0,
@@ -211,7 +212,7 @@ const getEmployeeMonthStats = (
         const isSunday = d.getDay() === 0 || (isPreethi && d.getDay() === 6);
         const isFuture = dateStr > format(new Date(), 'yyyy-MM-dd');
         const isPenaltyFree = isSunday || isFuture;
-        
+
         if (!isPenaltyFree) {
           totalCut += perDay;
         }
@@ -226,10 +227,10 @@ const getEmployeeMonthStats = (
     } else {
       // Absent / No record
       const d = new Date(dateStr);
-        const isSunday = d.getDay() === 0 || (isPreethi && d.getDay() === 6);
+      const isSunday = d.getDay() === 0 || (isPreethi && d.getDay() === 6);
       const isFuture = dateStr > format(new Date(), 'yyyy-MM-dd');
       const isPenaltyFree = isSunday || isFuture;
-      
+
       if (!isPenaltyFree) {
         totalCut += perDay;
       }
@@ -347,7 +348,7 @@ export default function Attendance() {
     const todayStr = endDate;
     try {
       const clockInIso = new Date(`${todayStr}T${manualTime}`).toISOString();
-      
+
       const { error } = await supabase.from('attendance_logs').upsert({
         employee_id: emp.id,
         date: todayStr,
@@ -438,7 +439,7 @@ export default function Attendance() {
 
   const downloadReport = () => {
     const todayStr = endDate;
-    
+
     // CSV Header
     const headers = [
       "Employee Name",
@@ -452,22 +453,22 @@ export default function Attendance() {
       "Per Day Salary",
       "Cut Amount (INR)"
     ];
-    
+
     const rows = employees.map(emp => {
       const log = attendanceData[emp.id]?.[todayStr];
       const monthlySalary = Number(emp.monthly_salary) || getEmpSalary(emp.full_name) || 0;
       const isPreethi = emp.full_name?.toLowerCase().includes("preethi");
-    const perDay = Math.round(monthlySalary / (isPreethi ? 22 : 26)); // 22 for Preethi, 26 for others
+      const perDay = Math.round(monthlySalary / (isPreethi ? 22 : 26)); // 22 for Preethi, 26 for others
       const deadline = emp.punch_deadline || (emp.full_name?.toLowerCase().startsWith("preethi") ? "10:00:00" : "08:00:00");
-      
+
       const stats = getEmployeeMonthStats(emp.id, todayStr.substring(0, 7), emp, attendanceData, todayStr);
       const detail = stats.dailyDetails[todayStr] || { status: 'absent', cut: perDay, explanation: 'Absent', isExcused: false, minutesLate: 0 };
-      
+
       let punchInTime = "—";
       if (log && log.clock_in) {
         punchInTime = format(new Date(log.clock_in), 'hh:mm a');
       }
-      
+
       let displayStatus = "Absent";
       if (detail.status === 'paid_leave') displayStatus = "Paid Leave";
       else if (detail.status === 'unpaid_leave') displayStatus = "Unpaid Leave";
@@ -494,13 +495,13 @@ export default function Attendance() {
         detail.cut
       ];
     });
-    
+
     // Combine headers and rows
     const csvContent = [
       headers.join(","),
       ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
     ].join("\n");
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -513,7 +514,7 @@ export default function Attendance() {
 
   const loadData = async (startVal: string, endVal: string) => {
     setLoading(true);
-    
+
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     if (user) setUserId(user.id);
@@ -532,7 +533,7 @@ export default function Attendance() {
     }
 
     // Exclude owners and users without a biometric ID
-    const filtered = (profiles || []).filter(p => 
+    const filtered = (profiles || []).filter(p =>
       !p.full_name?.toLowerCase().includes("lakshmana gokul") &&
       !!p.biometric_id
     );
@@ -550,7 +551,7 @@ export default function Attendance() {
     });
     const deduplicated = Array.from(seen.values());
     setEmployees(deduplicated);
-    
+
     const myProfile = profiles?.find(p => p.id === user?.id);
     if (myProfile?.company_id) setCompanyId(myProfile.company_id);
 
@@ -571,7 +572,7 @@ export default function Attendance() {
       logs.forEach(log => {
         if (!grouped[log.employee_id]) grouped[log.employee_id] = {};
         grouped[log.employee_id][log.date] = log;
-        
+
         // Check my status today
         if (log.employee_id === user?.id && log.date === format(new Date(), 'yyyy-MM-dd')) {
           setMyTodayStatus(log);
@@ -579,7 +580,7 @@ export default function Attendance() {
       });
       setAttendanceData(grouped);
     }
-    
+
     setLoading(false);
   };
 
@@ -640,7 +641,7 @@ export default function Attendance() {
   const handleStartDateChange = (val: string) => {
     if (!val) return;
     setPreset("custom");
-    
+
     try {
       const start = parseISO(val);
       const end = parseISO(endDate);
@@ -685,10 +686,10 @@ export default function Attendance() {
 
   const handlePunch = async () => {
     if (!userId) return toast.error("User ID missing");
-    
+
     setPunching(true);
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    
+
     try {
       if (!myTodayStatus) {
         // Punch In
@@ -718,10 +719,10 @@ export default function Attendance() {
 
   return (
     <div className="space-y-4 animate-in fade-in zoom-in duration-300">
-      <PageHeader 
-        title="Attendance" 
-        description="Track team presence and punch in for the day" 
-        breadcrumbs={[{ label: "Employees" }, { label: "Attendance" }]} 
+      <PageHeader
+        title="Attendance"
+        description="Track team presence and punch in for the day"
+        breadcrumbs={[{ label: "Employees" }, { label: "Attendance" }]}
         actions={
           <div className="flex items-center gap-2">
             <Button onClick={downloadReport} variant="outline" size="sm">
@@ -751,7 +752,7 @@ export default function Attendance() {
           <span className="text-2xl font-bold mt-1 text-rose-500">₹{summaryStats.totalCut.toLocaleString()}</span>
         </div>
       </div>
-      
+
       {/* Date Range Selector Toolbar */}
       <div className="flex flex-wrap items-center gap-4 bg-card p-4 rounded-xl border shadow-sm">
         <div className="flex items-center gap-2">
@@ -820,13 +821,13 @@ export default function Attendance() {
               const log = attendanceData[emp.id]?.[todayStr];
               const stats = getEmployeeMonthStats(emp.id, todayStr.substring(0, 7), emp, attendanceData, todayStr);
               const detail = stats.dailyDetails[todayStr] || { status: 'absent', cut: 0, explanation: '', isExcused: false, minutesLate: 0 };
-              
+
               let statusBadge = (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
                   Not Synced
                 </span>
               );
-              
+
               if (log) {
                 if (log.status === 'on_leave') {
                   if (detail.status === 'paid_leave') {
@@ -885,7 +886,7 @@ export default function Attendance() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-semibold truncate text-foreground flex-1">{emp.full_name}</h4>
-                        <button 
+                        <button
                           type="button"
                           className="text-muted-foreground hover:text-foreground transition-colors p-1"
                           onClick={() => openSettings(emp)}
@@ -900,7 +901,7 @@ export default function Attendance() {
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="pt-2 border-t border-border/50 flex flex-col space-y-1 text-[11px] flex-1 justify-between">
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
@@ -917,7 +918,7 @@ export default function Attendance() {
                             const deadline = emp.punch_deadline || (emp.full_name?.toLowerCase().startsWith("preethi") ? "10:00:00" : "08:00:00");
                             const minutesLate = getLateMinutes(log.clock_in, deadline);
                             const isLate = minutesLate >= 2;
-                            
+
                             if (isLate) {
                               const monthlySalary = Number(emp.monthly_salary) || getEmpSalary(emp.full_name) || 0;
                               const perDay = Math.round(monthlySalary / 26);
@@ -1034,7 +1035,7 @@ export default function Attendance() {
                           </button>
                         </div>
                       )}
-                      
+
                       {/* Monthly statistics summary */}
                       <div className="pt-2 mt-2 border-t border-border/30 flex items-center justify-between text-[9px] text-muted-foreground font-medium">
                         <span>This Month:</span>
@@ -1100,10 +1101,10 @@ export default function Attendance() {
                     const monthStr = dateStr.substring(0, 7);
                     const stats = getCachedMonthStats(monthStr);
                     const detail = stats.dailyDetails[dateStr] || { status: 'absent', cut: 0, explanation: '', isExcused: false, minutesLate: 0 };
-                    
+
                     const log = attendanceData[e.id]?.[dateStr];
                     const isCurrentMonth = monthStr === currentMonthStr;
-                    
+
                     if (isCurrentMonth) {
                       if (detail.status === 'paid_leave') {
                         rangePaidLeaves++;
@@ -1126,7 +1127,7 @@ export default function Attendance() {
 
                     const clockInStr = log?.clock_in ? format(new Date(log.clock_in), 'hh:mm a') : null;
                     const clockOutStr = log?.clock_out ? format(new Date(log.clock_out), 'hh:mm a') : null;
-                    
+
                     let cellBg = "bg-muted/40 border-border/40";
                     let statusLabel = "";
                     if (detail.explanation === 'Not Joined') {
@@ -1156,7 +1157,7 @@ export default function Attendance() {
                       statusLabel = "LATE";
                     }
 
-                    const tooltip = log 
+                    const tooltip = log
                       ? `${format(parseISO(dateStr), 'MMM dd')} - ${statusLabel || 'PRESENT'}\nIn: ${clockInStr || '--:--'}\nOut: ${clockOutStr || '--:--'}\n${detail.explanation}`
                       : `${format(parseISO(dateStr), 'MMM dd')} - ${statusLabel || 'No Record'}\n${detail.explanation}`;
 

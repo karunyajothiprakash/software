@@ -91,7 +91,7 @@ export default function LeadsList() {
   const [selectedFollowUpLead, setSelectedFollowUpLead] = useState<Lead | null>(null);
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpNote, setFollowUpNote] = useState("");
-  const bdTeam = ["Gayathri"];
+  const bdTeam = ["Gayathri", "Vemula Navya Lahari", "Aditi"];
   const [followUpAssignedTo, setFollowUpAssignedTo] = useState(bdTeam[0]);
 
   const [isRemarkOpen, setIsRemarkOpen] = useState(false);
@@ -122,12 +122,19 @@ export default function LeadsList() {
   const [sourceId, setSourceId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCountry, setSelectedCountry] = useState("All Countries");
+  const [leadsTab, setLeadsTab] = useState<"open" | "closed">("open");
+
+  const OPEN_STAGES = ["New", "Contacted", "Negotiation", "Qualified"];
+  const CLOSED_STAGES = ["Won", "Client Successfully Acquired", "Lost"];
 
   const uniqueCountries = Array.from(
     new Set(leads
       .map((lead) => lead.country?.trim() || "")
       .filter(Boolean))
   ).sort();
+
+  const openLeadsCount = leads.filter(l => OPEN_STAGES.some(s => s.toLowerCase() === l.stage?.toLowerCase())).length;
+  const closedLeadsCount = leads.filter(l => CLOSED_STAGES.some(s => s.toLowerCase() === l.stage?.toLowerCase())).length;
 
   const filteredLeads = leads.filter((lead) => {
     const query = searchQuery.toLowerCase();
@@ -143,7 +150,12 @@ export default function LeadsList() {
       selectedCountry === "All Countries" ||
       lead.country === selectedCountry;
 
-    return matchesSearch && matchesCountry;
+    const matchesTab =
+      leadsTab === "open"
+        ? OPEN_STAGES.some(s => s.toLowerCase() === lead.stage?.toLowerCase())
+        : CLOSED_STAGES.some(s => s.toLowerCase() === lead.stage?.toLowerCase());
+
+    return matchesSearch && matchesCountry && matchesTab;
   });
 
   const fetchLeads = async () => {
@@ -782,8 +794,32 @@ export default function LeadsList() {
         </Dialog>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">Total Leads: <span className="font-bold text-foreground">{leads.length}</span></div>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/40 border border-border">
+          <button
+            onClick={() => setLeadsTab("open")}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${leadsTab === "open"
+              ? "bg-emerald-600 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+          >
+            Open
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${leadsTab === "open" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+              }`}>{openLeadsCount}</span>
+          </button>
+          <button
+            onClick={() => setLeadsTab("closed")}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${leadsTab === "closed"
+              ? "bg-slate-600 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+          >
+            Closed
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${leadsTab === "closed" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+              }`}>{closedLeadsCount}</span>
+          </button>
+        </div>
+        <div className="text-sm text-muted-foreground">Showing: <span className="font-bold text-foreground">{filteredLeads.length}</span> / Total: <span className="font-bold text-foreground">{leads.length}</span></div>
       </div>
 
       {/* Search and Country Filter */}
