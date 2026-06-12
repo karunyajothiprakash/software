@@ -1,25 +1,37 @@
 const express = require('express');
 const router = express.Router();
-const { createClient } = require('@supabase/supabase-js');
 const { requireAuth } = require('../middleware/auth');
-
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const db = require('../db');
 
 // GET /api/quotations/:id
 router.get('/:id', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('quotations')
-      .select('*, customers(name, address, phone)')
-      .eq('id', req.params.id)
-      .single();
+    const result = await db.query(
+      `SELECT q.*, 
+              c.name as customer_name, c.address as customer_address, c.phone as customer_phone
+       FROM quotations q
+       LEFT JOIN customers c ON q.customer_id = c.id
+       WHERE q.id = $1`,
+      [req.params.id]
+    );
 
-    if (error) throw error;
-    res.json(data);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Quotation not found" });
+    }
+
+    const row = result.rows[0];
+    const { customer_name, customer_address, customer_phone, ...quotation } = row;
+
+    res.json({
+      ...quotation,
+      customers: customer_name ? {
+        name: customer_name,
+        address: customer_address,
+        phone: customer_phone
+      } : null
+    });
   } catch (err) {
-    console.error("Supabase Error (get quotation):", err);
+    console.error("DB Error (get quotation):", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -27,16 +39,13 @@ router.get('/:id', requireAuth, async (req, res) => {
 // GET /api/quotations/:id/items
 router.get('/:id/items', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('quotation_items')
-      .select('*')
-      .eq('quotation_id', req.params.id)
-      .order('created_at');
-
-    if (error) throw error;
-    res.json(data || []);
+    const result = await db.query(
+      `SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY created_at`,
+      [req.params.id]
+    );
+    res.json(result.rows || []);
   } catch (err) {
-    console.error("Supabase Error (get quotation items):", err);
+    console.error("DB Error (get quotation items):", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -46,28 +55,42 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { quotation, items } = req.body;
     
-    // Create quotation
-    const { data: qData, error: qErr } = await supabase
-      .from('quotations')
-      .insert([quotation])
-      .select()
-      .single();
+    await db.query('BEGIN');
 
-    if (qErr) throw qErr;
+    // Create quotation
+    const qCols = Object.keys(quotation).filter(k => quotation[k] !== undefined);
+    const qVals = qCols.map(k => quotation[k]);
+    const qPlaceholders = qCols.map((_, i) => `$${i + 1}`).join(', ');
+
+    const qRes = await db.query(
+      `INSERT INTO quotations (${qCols.join(', ')}) VALUES (${qPlaceholders}) RETURNING *`,
+      qVals
+    );
+    const qData = qRes.rows[0];
 
     // Attach items
     if (items && items.length > 0) {
-      const itemsToInsert = items.map(item => ({ ...item, quotation_id: qData.id }));
-      const { error: itemsErr } = await supabase
-        .from('quotation_items')
-        .insert(itemsToInsert);
+      for (const item of items) {
+        const itemCols = Object.keys(item).filter(k => item[k] !== undefined);
+        const itemVals = itemCols.map(k => item[k]);
+        
+        itemCols.push('quotation_id');
+        itemVals.push(qData.id);
+        
+        const itemPlaceholders = itemCols.map((_, i) => `$${i + 1}`).join(', ');
 
-      if (itemsErr) throw itemsErr;
+        await db.query(
+          `INSERT INTO quotation_items (${itemCols.join(', ')}) VALUES (${itemPlaceholders})`,
+          itemVals
+        );
+      }
     }
 
+    await db.query('COMMIT');
     res.status(201).json(qData);
   } catch (err) {
-    console.error("Supabase Error (create quotation):", err);
+    await db.query('ROLLBACK');
+    console.error("DB Error (create quotation):", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -77,33 +100,75 @@ router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { quotation, itemsToUpdate, itemsToInsert } = req.body;
 
+    await db.query('BEGIN');
+
     // Update quotation
     if (quotation && Object.keys(quotation).length > 0) {
-      const { error: qErr } = await supabase
-        .from('quotations')
-        .update(quotation)
-        .eq('id', req.params.id);
-      if (qErr) throw qErr;
+      const setClauses = [];
+      const values = [];
+      let idx = 1;
+
+      for (const [key, value] of Object.entries(quotation)) {
+        setClauses.push(`${key} = $${idx}`);
+        values.push(value);
+        idx++;
+      }
+      values.push(req.params.id);
+
+      await db.query(
+        `UPDATE quotations SET ${setClauses.join(', ')} WHERE id = $${idx}`,
+        values
+      );
     }
 
     // Update items
     if (itemsToUpdate && itemsToUpdate.length > 0) {
       for (const item of itemsToUpdate) {
-        await supabase.from('quotation_items').update(item).eq('id', item.id);
+        const setClauses = [];
+        const values = [];
+        let idx = 1;
+        const itemId = item.id;
+        
+        const itemCopy = { ...item };
+        delete itemCopy.id;
+
+        for (const [key, value] of Object.entries(itemCopy)) {
+          setClauses.push(`${key} = $${idx}`);
+          values.push(value);
+          idx++;
+        }
+        values.push(itemId);
+
+        await db.query(
+          `UPDATE quotation_items SET ${setClauses.join(', ')} WHERE id = $${idx}`,
+          values
+        );
       }
     }
 
     // Insert new items
     if (itemsToInsert && itemsToInsert.length > 0) {
-      const { error: insErr } = await supabase
-        .from('quotation_items')
-        .insert(itemsToInsert.map(item => ({ ...item, quotation_id: req.params.id })));
-      if (insErr) throw insErr;
+      for (const item of itemsToInsert) {
+        const itemCols = Object.keys(item).filter(k => item[k] !== undefined);
+        const itemVals = itemCols.map(k => item[k]);
+        
+        itemCols.push('quotation_id');
+        itemVals.push(req.params.id);
+        
+        const itemPlaceholders = itemCols.map((_, i) => `$${i + 1}`).join(', ');
+
+        await db.query(
+          `INSERT INTO quotation_items (${itemCols.join(', ')}) VALUES (${itemPlaceholders})`,
+          itemVals
+        );
+      }
     }
 
+    await db.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
-    console.error("Supabase Error (update quotation):", err);
+    await db.query('ROLLBACK');
+    console.error("DB Error (update quotation):", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
