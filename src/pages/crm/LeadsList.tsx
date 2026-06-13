@@ -1078,7 +1078,7 @@ export default function LeadsList() {
                       >
                         Remark
                       </Button>
-                      {lead.stage?.toLowerCase() === "won" && (
+                      {["won", "client successfully acquired"].includes(lead.stage?.toLowerCase() || "") && (
                         <Button
                           size="sm"
                           variant="outline"

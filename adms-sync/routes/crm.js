@@ -130,7 +130,7 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
     );
 
     await db.query(
-      `UPDATE leads SET stage = 'Won' WHERE id = $1`,
+      `UPDATE leads SET stage = 'Client Successfully Acquired' WHERE id = $1 AND stage != 'Client Successfully Acquired'`,
       [req.params.id]
     );
 
