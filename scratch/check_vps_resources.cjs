@@ -3,21 +3,14 @@ const { Client } = require('ssh2');
 const conn = new Client();
 
 const script = `
-cd /var/www/erp
-git pull origin main
-rm -rf node_modules package-lock.json
-npm cache clean --force
-npm install
-npm run build
-pm2 restart erp-frontend
+free -h
+df -h
 `;
 
 conn.on('ready', () => {
-  console.log('Client :: ready');
   conn.exec(script, (err, stream) => {
     if (err) throw err;
     stream.on('close', (code, signal) => {
-      console.log('Deployment stream closed');
       conn.end();
     }).on('data', (data) => {
       process.stdout.write(data);
