@@ -194,18 +194,6 @@ export function AppSidebar({ open, onClose }: { open: boolean; onClose: () => vo
         return permissions.includes(i.title.toLowerCase()) || (i.items && i.items.length > 0);
       });
 
-      // Filter Face Attendance for unauthorized users for extra safety if they somehow granted it
-      if (g.title === "HR & Employees") {
-        const allowedEmails = new Set([
-          "vemulanavyalahar009@gmail.com",
-          "kim.swathi.07@gmail.com",
-        ]);
-        const userEmail = profile?.email?.toLowerCase() ?? "";
-        if (!allowedEmails.has(userEmail)) {
-          items = items.filter(i => i.title !== "Face Attendance");
-        }
-      }
-      
       return { ...g, items };
     })
     .filter(g => g.items.length > 0);

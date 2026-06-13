@@ -7,6 +7,7 @@ import { Plus, AlertTriangle, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
 
 
 const SearchBar = ({ placeholder, value, onChange, children }) => (
@@ -47,6 +48,19 @@ export default function Parties() {
   const [typeFilter, setType] = useState('All')
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(null)
+  const [confirm, setConfirm] = useState({ open: false, id: null, loading: false })
+  const [editOpen, setEditOpen] = useState(false)
+  const [editingParty, setEditingParty] = useState(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [form, setForm] = useState({
+    name: '',
+    gstin: '',
+    type: 'Customer',
+    state: '',
+    credit_limit: 0,
+    outstanding: 0,
+    status: 'Active'
+  })
 
   useEffect(() => {
     fetchParties()
@@ -82,7 +96,18 @@ export default function Parties() {
         }
         setParties([])
       } else {
-        setParties(data || [])
+        // Deduplicate client-side by GSTIN to avoid duplicate rows in UI
+        const src = data || []
+        const unique = []
+        const seen = new Set()
+        for (const item of src) {
+          const key = item.gstin || item.id
+          if (!seen.has(key)) {
+            seen.add(key)
+            unique.push(item)
+          }
+        }
+        setParties(unique)
       }
     } catch (err) {
       console.error('Unexpected error loading parties:', err)
@@ -93,11 +118,14 @@ export default function Parties() {
     setLoading(false)
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to remove this party? This will only soft-delete the record.')) {
-      return
-    }
+  const handleDelete = (id) => {
+    setConfirm({ open: true, id, loading: false })
+  }
 
+  const confirmDelete = async () => {
+    const id = confirm.id
+    if (!id) return
+    setConfirm(c => ({ ...c, loading: true }))
     setDeleting(id)
     const { error } = await supabase
       .from('parties')
@@ -109,6 +137,7 @@ export default function Parties() {
       .eq('id', id)
 
     setDeleting(null)
+    setConfirm({ open: false, id: null, loading: false })
 
     if (error) {
       console.error('Soft delete error:', error)
@@ -118,6 +147,55 @@ export default function Parties() {
 
     setParties(parties.filter((p) => p.id !== id))
     toast.success('Party removed from view (soft-deleted)')
+  }
+
+  const openEdit = (p) => {
+    setEditingParty(p)
+    setForm({
+      name: p.name || '',
+      gstin: p.gstin || '',
+      type: p.type || 'Customer',
+      state: p.state || '',
+      credit_limit: p.credit_limit ?? p.creditLimit ?? 0,
+      outstanding: p.outstanding ?? 0,
+      status: p.status || 'Active'
+    })
+    setEditOpen(true)
+  }
+
+  const handleFormChange = (key, value) => {
+    setForm((s) => ({ ...s, [key]: value }))
+  }
+
+  const saveEdit = async () => {
+    if (!editingParty) return
+    setSavingEdit(true)
+    try {
+      const payload = {
+        name: form.name,
+        gstin: form.gstin,
+        type: form.type,
+        state: form.state,
+        credit_limit: Number(form.credit_limit) || 0,
+        outstanding: Number(form.outstanding) || 0,
+        status: form.status
+      }
+      const { data, error } = await supabase.from('parties').update(payload).eq('id', editingParty.id).select().single()
+      if (error) {
+        console.error('Update party error:', error)
+        toast.error('Unable to save party. ' + (error.message || ''))
+        return
+      }
+      setParties((prev) => prev.map((p) => (p.id === data.id ? data : p)))
+      setEditOpen(false)
+      setEditingParty(null)
+      toast.success('Party updated successfully')
+    } catch (err) {
+      console.error('Unexpected save error:', err)
+      toast.error('Unexpected error while saving')
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   const filtered = parties.filter((p) => {
@@ -277,8 +355,8 @@ export default function Parties() {
                         <Badge className={`${groupBg} ${groupText} border-border/50`}>{rows.length}</Badge>
                       </td>
                     </tr>,
-                    ...rows.map((p, i) => (
-                      <tr key={i} className="tbl-row hover:bg-amber-500/5 transition-colors cursor-pointer">
+                    ...rows.map((p) => (
+                      <tr key={p.id} className="tbl-row hover:bg-amber-500/5 transition-colors">
                         <td className="tbl-cell font-semibold text-slate-200">{p.name}</td>
                         <td className="tbl-cell font-mono text-[11px] text-slate-500">{p.gstin}</td>
                         <td className="tbl-cell">
@@ -312,7 +390,7 @@ export default function Parties() {
                           </Badge>
                         </td>
                         <td className="tbl-cell">
-                          <button className="text-xs text-amber-400 hover:text-amber-300 font-medium border border-amber-500/30 hover:border-amber-500/50 px-2 py-1 rounded transition-colors">Edit</button>
+                          <button onClick={(e) => { e.stopPropagation(); openEdit(p) }} className="text-xs text-amber-400 hover:text-amber-300 font-medium border border-amber-500/30 hover:border-amber-500/50 px-2 py-1 rounded transition-colors">Edit</button>
                         </td>
                       </tr>
                     ))
@@ -320,6 +398,57 @@ export default function Parties() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Edit Modal */}
+        {editOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={() => setEditOpen(false)} />
+            <div className="relative w-full max-w-2xl mx-auto bg-[#0b0b0b] rounded-2xl border border-border p-6 z-50 shadow-2xl ring-1 ring-black/40 max-h-[85vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold text-white mb-4">Edit Party</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-400">Party Name</label>
+                  <input value={form.name} onChange={(e) => handleFormChange('name', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-400">GSTIN</label>
+                  <input value={form.gstin} onChange={(e) => handleFormChange('gstin', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white font-mono text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-400">Type</label>
+                  <select value={form.type} onChange={(e) => handleFormChange('type', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white">
+                    <option>Customer</option>
+                    <option>Vendor</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-400">State</label>
+                  <input value={form.state} onChange={(e) => handleFormChange('state', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-400">Total Amount (Credit Limit)</label>
+                  <input type="number" value={form.credit_limit} onChange={(e) => handleFormChange('credit_limit', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white font-mono text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm text-slate-400">Outstanding Amount</label>
+                  <input type="number" value={form.outstanding} onChange={(e) => handleFormChange('outstanding', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white font-mono text-xs" />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <label className="text-sm text-slate-400">Status</label>
+                  <select value={form.status} onChange={(e) => handleFormChange('status', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white">
+                    <option>Active</option>
+                    <option>Pending</option>
+                    <option>Inactive</option>
+                  </select>
+                </div>
+              </div>
+              <div className="pt-4 flex justify-end gap-2">
+                <button onClick={() => { setEditOpen(false); setEditingParty(null) }} className="px-4 py-2 rounded border border-[#444] text-slate-300 bg-transparent hover:bg-[#121212]">Cancel</button>
+                <button onClick={saveEdit} disabled={savingEdit} className="px-4 py-2 btn-gold rounded shadow">{savingEdit ? 'Saving...' : 'Save'}</button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -339,6 +468,17 @@ export default function Parties() {
             </div>
           </div>
         )}
+
+          <ConfirmDialog
+            open={confirm.open}
+            title="Remove Party"
+            message="Are you sure you want to remove this party? This will only soft-delete the record."
+            loading={confirm.loading}
+            confirmText="Remove"
+            cancelText="Cancel"
+            onConfirm={confirmDelete}
+            onCancel={() => setConfirm({ open: false, id: null, loading: false })}
+          />
       </div>
     </div>
   )

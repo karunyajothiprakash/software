@@ -6,6 +6,7 @@ import { Plus, CheckCircle, XCircle, Trash2, BookOpen, TrendingUp, TrendingDown,
 import { toast } from 'sonner'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
 
 const DEFAULT_ACCOUNTS = [
   { code: '1001', name: 'Cash', group: 'Current Assets', type: 'Asset', balance: '₹4,20,000', gst: false, status: 'Active' },
@@ -66,6 +67,11 @@ export default function ChartOfAccounts() {
   const [typeFilter, setTypeFilter] = useState('All')
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(null)
+  const [confirm, setConfirm] = useState({ open: false, code: null, loading: false })
+  const [editOpen, setEditOpen] = useState(false)
+  const [editingAccount, setEditingAccount] = useState(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [form, setForm] = useState({ code: '', name: '', group: '', type: 'Asset', balance: '', gst: false, status: 'Active' })
 
   useEffect(() => {
     fetchAccounts()
@@ -127,11 +133,14 @@ export default function ChartOfAccounts() {
     }
   }
 
-  const handleDelete = async (code) => {
-    if (!window.confirm('Are you sure you want to delete this account? It can be restored later.')) {
-      return
-    }
+  const handleDelete = (code) => {
+    setConfirm({ open: true, code, loading: false })
+  }
 
+  const confirmDelete = async () => {
+    const code = confirm.code
+    if (!code) return
+    setConfirm(c => ({ ...c, loading: true }))
     setDeleting(code)
     const { error } = await supabase
       .from('chart_of_accounts')
@@ -143,6 +152,7 @@ export default function ChartOfAccounts() {
       .eq('code', code)
 
     setDeleting(null)
+    setConfirm({ open: false, code: null, loading: false })
 
     if (error) {
       console.error('Soft delete error:', error)
@@ -160,6 +170,53 @@ export default function ChartOfAccounts() {
     const matchType = typeFilter === 'All' || a.type === typeFilter
     return matchSearch && matchType
   })
+
+  const openEdit = (acc) => {
+    setEditingAccount(acc)
+    setForm({
+      code: acc.code || '',
+      name: acc.name || '',
+      group: acc.group || '',
+      type: acc.type || 'Asset',
+      balance: typeof acc.balance === 'number' ? acc.balance : (acc.balance || ''),
+      gst: !!acc.gst,
+      status: acc.status || 'Active'
+    })
+    setEditOpen(true)
+  }
+
+  const handleFormChange = (k, v) => setForm(s => ({ ...s, [k]: v }))
+
+  const saveEdit = async () => {
+    if (!editingAccount) return
+    setSavingEdit(true)
+    try {
+      const payload = {
+        name: form.name,
+        group: form.group,
+        type: form.type,
+        balance: typeof form.balance === 'string' && form.balance.startsWith('₹') ? form.balance : form.balance,
+        gst: !!form.gst,
+        status: form.status
+      }
+      const { data, error } = await supabase.from('chart_of_accounts').update(payload).eq('code', editingAccount.code).select().single()
+      if (error) {
+        console.error('Update account error:', error)
+        toast.error('Unable to save account. ' + (error.message || ''))
+        return
+      }
+      const updated = { ...data, balance: typeof data.balance === 'number' ? `₹${data.balance.toLocaleString('en-IN')}` : data.balance }
+      setAccounts(prev => prev.map(a => (a.code === updated.code ? updated : a)))
+      setEditOpen(false)
+      setEditingAccount(null)
+      toast.success('Account updated successfully')
+    } catch (err) {
+      console.error('Unexpected save error:', err)
+      toast.error('Unexpected error while saving')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   const groups = Array.from(new Set(filtered.map((a) => a.group))).sort()
   const grouped = groups.reduce((acc, g) => {
@@ -300,8 +357,8 @@ export default function ChartOfAccounts() {
                   <tr key={`g-${group}`} className={`${groupTints[group]} border-y border-border/50`}>
                     <td colSpan={8} className="px-4 py-3 text-sm font-bold text-white uppercase tracking-wider">{group}</td>
                   </tr>,
-                  ...rows.map((a, i) => (
-                    <tr key={i} className="tbl-row hover:bg-amber-500/5 transition-colors cursor-pointer">
+                  ...rows.map((a) => (
+                    <tr key={a.code} className="tbl-row hover:bg-amber-500/5 transition-colors">
                       <td className="tbl-cell font-mono text-xs text-slate-500">{a.code}</td>
                       <td className="tbl-cell font-semibold text-slate-200">{a.name}</td>
                       <td className="tbl-cell text-slate-500 text-xs">{a.group}</td>
@@ -324,7 +381,7 @@ export default function ChartOfAccounts() {
                       </td>
                       <td className="tbl-cell">
                         <div className="flex items-center gap-2">
-                          <button className="text-xs text-amber-400 hover:text-amber-300 font-medium">Edit</button>
+                          <button onClick={(e) => { e.stopPropagation(); openEdit(a) }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">Edit</button>
                           <button onClick={(e) => { e.stopPropagation(); handleDelete(a.code); }} disabled={deleting === a.code} className="text-xs text-red-400 hover:text-red-300 font-medium disabled:opacity-50"><Trash2 size={12} /></button>
                         </div>
                       </td>
@@ -336,6 +393,73 @@ export default function ChartOfAccounts() {
           )}
         </div>
       </div>
+
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm z-40" onClick={() => setEditOpen(false)} />
+          <div className="relative w-full max-w-2xl mx-auto bg-[#0b0b0b] rounded-2xl border border-border p-6 z-50 shadow-2xl ring-1 ring-black/40 max-h-[85vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-white mb-4">Edit Account</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">Code</label>
+                <input value={form.code} readOnly className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white font-mono text-xs" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">Name</label>
+                <input value={form.name} onChange={(e) => handleFormChange('name', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">Group</label>
+                <input value={form.group} onChange={(e) => handleFormChange('group', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white text-xs" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">Type</label>
+                <select value={form.type} onChange={(e) => handleFormChange('type', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white">
+                  <option>Asset</option>
+                  <option>Liability</option>
+                  <option>Income</option>
+                  <option>Expense</option>
+                  <option>Equity</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">Closing Balance</label>
+                <input value={form.balance} onChange={(e) => handleFormChange('balance', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white font-mono text-xs" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">GST</label>
+                <div>
+                  <label className="inline-flex items-center gap-2">
+                    <input type="checkbox" checked={form.gst} onChange={(e) => handleFormChange('gst', e.target.checked)} />
+                    <span className="text-sm text-slate-400">Applies</span>
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-2 col-span-2">
+                <label className="text-sm text-slate-400">Status</label>
+                <select value={form.status} onChange={(e) => handleFormChange('status', e.target.value)} className="w-full rounded-md p-2 bg-[#0f0f0f] border border-[#333] text-white">
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div className="pt-4 flex justify-end gap-2">
+              <button onClick={() => { setEditOpen(false); setEditingAccount(null) }} className="px-4 py-2 rounded border border-[#444] text-slate-300 bg-transparent hover:bg-[#121212]">Cancel</button>
+              <button onClick={saveEdit} disabled={savingEdit} className="px-4 py-2 btn-gold rounded shadow">{savingEdit ? 'Saving...' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <ConfirmDialog
+        open={confirm.open}
+        title="Delete Account"
+        message="Are you sure you want to delete this account? It can be restored later."
+        loading={confirm.loading}
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirm({ open: false, code: null, loading: false })}
+      />
     </div>
   )
 }
