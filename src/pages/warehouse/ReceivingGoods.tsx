@@ -520,7 +520,7 @@ export default function ReceivingGoods() {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {suppliers.length > 0 ? suppliers.map((supplier: any) => (
-                                                    <SelectItem key={supplier.id} value={supplier.id}>{supplier.full_name}</SelectItem>
+                                                        <SelectItem key={supplier.id} value={String(supplier.id)}>{supplier.full_name}</SelectItem>
                                                 )) : null}
                                             </SelectContent>
                                         </Select>
@@ -534,8 +534,8 @@ export default function ReceivingGoods() {
                                                 <SelectValue placeholder={productsLoading ? "Loading products..." : "Select product"} />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {uniqueProducts.map((product: any) => (
-                                            <SelectItem key={product.id} value={product.id}>
+                                                    {uniqueProducts.map((product: any) => (
+                                                <SelectItem key={product.id} value={String(product.id)}>
                                                 {product.name} {product.grade ? `- ${product.grade}` : ''}
                                             </SelectItem>
                                         ))}
@@ -568,7 +568,7 @@ export default function ReceivingGoods() {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {warehouses.length > 0 ? warehouses.map((warehouse: any) => (
-                                                    <SelectItem key={warehouse.id} value={warehouse.id}>{warehouse.name}</SelectItem>
+                                                        <SelectItem key={warehouse.id} value={String(warehouse.id)}>{warehouse.name}</SelectItem>
                                                 )) : null}
                                             </SelectContent>
                                         </Select>
