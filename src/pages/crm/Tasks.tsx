@@ -44,14 +44,16 @@ export default function Tasks() {
   const fetchTasks = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`/api/crm-tasks?company_id=${profile?.company_id || ''}`, {
-        headers: { 'Authorization': `Bearer ${session?.access_token}` }
-      });
+      const headers: HeadersInit = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch(`/api/crm-tasks?company_id=${profile?.company_id || ''}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch tasks");
       const data = await res.json();
       setTasks(data);
     } catch (err: any) {
-      toast.error("Error loading tasks: " + err.message);
+      toast.error(`Error loading tasks: ${err.message}`);
     }
   };
 

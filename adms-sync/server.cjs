@@ -14,16 +14,29 @@ const db = require('./db');
 const path = require('path');
 const fs = require('fs');
 
-const dotenvPath = fs.existsSync(path.join(__dirname, '.env'))
-  ? path.join(__dirname, '.env')
-  : path.join(__dirname, '..', '.env');
-require('dotenv').config({ path: dotenvPath });
+let dir = __dirname;
+let envPath;
+while (dir) {
+  const check = path.join(dir, '.env');
+  if (fs.existsSync(check)) {
+    envPath = check;
+    break;
+  }
+  const parent = path.dirname(dir);
+  if (parent === dir) break;
+  dir = parent;
+}
+if (envPath) {
+  require('dotenv').config({ path: envPath });
+} else {
+  require('dotenv').config();
+}
 
 const app = express();
 const PORT = process.env.PORT || 8082;
 
 // Initialize Supabase Client
-const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {

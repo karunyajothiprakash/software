@@ -29,6 +29,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.put('/manual-time', requireAuth, async (req, res) => {
   try {
     const { employee_id, date, check_in, check_out } = req.body;
+    const marked_by = req.user.sub;
     
     const { rows } = await db.query(
       'SELECT id FROM attendance_logs WHERE employee_id = $1 AND date = $2 LIMIT 1',
@@ -57,6 +58,7 @@ router.put('/manual-time', requireAuth, async (req, res) => {
 router.put('/mark-od', requireAuth, async (req, res) => {
   try {
     const { employee_id, date, od_reason, check_in } = req.body;
+    const marked_by = req.user.sub;
     
     const { rows } = await db.query(
       'SELECT id FROM attendance_logs WHERE employee_id = $1 AND date = $2 LIMIT 1',
