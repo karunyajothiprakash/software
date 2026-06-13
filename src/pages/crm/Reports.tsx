@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { 
   format, 
   startOfMonth, 
@@ -182,7 +183,10 @@ export default function Reports() {
     return rawDbData.profiles.sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
   }, [rawDbData]);
 
-  // Load all raw data on mount
+  // Import syncCounter here (need to import at top of file too, will do in next step)
+  const { syncCounter } = useRealtimeSync();
+
+  // Load all raw data on mount and when syncCounter changes
   const fetchRawData = async () => {
     setLoading(true);
     try {
@@ -230,7 +234,7 @@ export default function Reports() {
 
   useEffect(() => {
     fetchRawData();
-  }, []);
+  }, [syncCounter]);
 
   useEffect(() => {
     if (rawDbData) {

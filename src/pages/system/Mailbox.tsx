@@ -570,10 +570,9 @@ export default function Mailbox() {
 
       const { data: { session } } = await supabase.auth.getSession();
       
-      const insertRes = await fetch('/api/emails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-        body: JSON.stringify({
+      const { data: insertData, error: insertError } = await supabase
+        .from('emails')
+        .insert({
           to_address: to,
           cc_address: cc || null,
           bcc_address: bcc || null,
@@ -586,18 +585,20 @@ export default function Mailbox() {
           received_at: new Date().toISOString(),
           company_id: profile?.company_id,
           account_id: account.id,
-          attachments: uploadedAttachments.length > 0 ? uploadedAttachments : null,
+          attachments: uploadedAttachments.length > 0 ? uploadedAttachments : null
         })
-      });
+        .select()
+        .single();
 
-      if (!insertRes.ok) throw new Error("Failed to insert email log");
-      const emailRow = await insertRes.json();
+      if (insertError || !insertData) throw new Error("Failed to insert email log: " + (insertError?.message || ""));
+      const emailRow = insertData;
 
-      await fetch(`/api/emails/${emailRow.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ status: "pending" })
-      });
+      const { error: updateError } = await supabase
+        .from('emails')
+        .update({ status: "pending" })
+        .eq('id', emailRow.id);
+        
+      if (updateError) console.error("Failed to update status to pending:", updateError);
 
       toast.info("Sending email...", { id: `sending-${emailRow.id}`, duration: 10000 });
 

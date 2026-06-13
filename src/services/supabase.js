@@ -133,6 +133,26 @@ export async function recordCheckIn(employeeId, confidenceScore) {
         .select()
         .single();
     if (error) throw error;
+    
+    // Sync to local database
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            await fetch('/api/attendance/face-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                body: JSON.stringify({
+                    employee_id: employeeId,
+                    date: today,
+                    check_in: now,
+                    status
+                })
+            });
+        }
+    } catch(err) {
+        console.error("Local face-sync check-in error:", err);
+    }
+    
     return data;
 }
 
@@ -161,6 +181,25 @@ export async function recordCheckOut(employeeId) {
         .select()
         .single();
     if (error) throw error;
+
+    // Sync to local database
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            await fetch('/api/attendance/face-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                body: JSON.stringify({
+                    employee_id: employeeId,
+                    date: today,
+                    check_out: now
+                })
+            });
+        }
+    } catch(err) {
+        console.error("Local face-sync check-out error:", err);
+    }
+
     return data;
 }
 

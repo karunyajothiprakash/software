@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCRMPermissions } from "@/hooks/useCRMPermissions";
 import { exportCRMtoPDF, exportCRMtoExcel } from "@/utils/crmExport";
 import { useCRMPageTracking } from "@/hooks/useCRMPageTracking";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
 type Lead = {
 
@@ -77,6 +78,7 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 export default function LeadsList() {
   useCRMPageTracking(); // STEP 5: Add page tracking
   const { roleSlugs } = useAuth();
+  const { syncCounter } = useRealtimeSync();
 
   const { isAdmin, isManager, isPrivileged, canExportPDF, canExportExcel, isLoading: permissionsLoading } = useCRMPermissions();
 
@@ -203,7 +205,9 @@ export default function LeadsList() {
     fetchLeads();
     fetchTeam();
     fetchSources();
+  }, [syncCounter]);
 
+  useEffect(() => {
     // Add realtime subscription for leads
     const channel = supabase
       .channel('leads-changes')

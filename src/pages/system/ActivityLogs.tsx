@@ -18,6 +18,9 @@ interface ActivityLog {
   team: string | null;
   created_at: string;
   actor_role?: string | null;
+  user_name?: string | null;
+  module?: string | null;
+  event_type?: string | null;
 }
 
 const ROLE_TO_TEAM: Record<string, string> = {
@@ -144,7 +147,7 @@ export default function ActivityLogs() {
       ) : (
         <DataTable
           data={logs}
-          searchKeys={["actor_name", "action", "entity", "team"]}
+          searchKeys={["actor_name", "user_name", "action", "event_type", "entity", "module", "team"]}
           columns={[
             {
               key: "created_at",
@@ -160,7 +163,7 @@ export default function ActivityLogs() {
               header: "Actor",
               render: (r) => (
                 <div className="flex items-center flex-wrap gap-1">
-                  <span className="font-medium text-foreground">{r.actor_name}</span>
+                  <span className="font-medium text-foreground">{r.actor_name || r.user_name || "Unknown"}</span>
                   {getRoleBadge(r.actor_role)}
                 </div>
               ),
@@ -169,20 +172,20 @@ export default function ActivityLogs() {
               key: "team",
               header: "Team",
               render: (r) => {
-                const displayTeam = r.team || inferTeamFromActorName(r.actor_name);
+                const displayTeam = r.team || inferTeamFromActorName(r.actor_name || r.user_name || "");
                 return <span className="text-sm text-muted-foreground">{displayTeam || "—"}</span>;
               },
             },
             {
               key: "entity",
               header: "Entity",
-              render: (r) => getEntityBadge(r.entity),
+              render: (r) => getEntityBadge(r.entity || r.module),
             },
             {
               key: "action",
               header: "Action",
               render: (r) => (
-                <span className="text-sm text-muted-foreground">{r.action}</span>
+                <span className="text-sm text-muted-foreground">{r.action || r.event_type || "—"}</span>
               ),
             },
           ]}

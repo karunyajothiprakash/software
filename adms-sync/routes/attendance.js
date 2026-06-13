@@ -141,6 +141,44 @@ router.put('/delete-log', requireAuth, async (req, res) => {
   }
 });
 
+// --- API ROUTE: Face Attendance Sync ---
+router.post('/face-sync', requireAuth, async (req, res) => {
+  try {
+    const { employee_id, date, check_in, check_out, status } = req.body;
+    
+    const { rows } = await db.query(
+      'SELECT id FROM attendance_logs WHERE employee_id = $1 AND date = $2 LIMIT 1',
+      [employee_id, date]
+    );
+
+    if (rows.length > 0) {
+      // Update check_out if it exists, else check_in
+      if (check_out) {
+        await db.query(
+          'UPDATE attendance_logs SET clock_out = $1, is_deleted = false, deleted_at = null, deleted_by = null WHERE employee_id = $2 AND date = $3',
+          [check_out, employee_id, date]
+        );
+      } else if (check_in) {
+        await db.query(
+          'UPDATE attendance_logs SET clock_in = $1, status = $2, is_deleted = false, deleted_at = null, deleted_by = null WHERE employee_id = $3 AND date = $4',
+          [check_in, status, employee_id, date]
+        );
+      }
+    } else {
+      if (check_in) {
+        await db.query(
+          'INSERT INTO attendance_logs (employee_id, date, clock_in, clock_out, is_manual, status) VALUES ($1, $2, $3, $4, false, $5)',
+          [employee_id, date, check_in, check_out || null, status || 'present']
+        );
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Postgres Error (face-sync):", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 // --- API ROUTE: Punch In/Out ---
 router.post('/punch', requireAuth, async (req, res) => {
   try {

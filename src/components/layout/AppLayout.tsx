@@ -5,11 +5,16 @@ import { Topbar } from "./Topbar";
 import { TeamChatPanel } from "../dashboard/TeamChatPanel";
 import { CRMSecurityProvider } from "../crm/CRMSecurityProvider";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
 export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   useActivityTracker(location.pathname);
+  
+  // Initialize global realtime sync (handles React Query invalidation)
+  useRealtimeSync();
+
   return (
     <CRMSecurityProvider>
       <div className="min-h-screen flex w-full bg-background relative">

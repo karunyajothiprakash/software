@@ -15,6 +15,7 @@ import { Loader2, Plus, Calendar as CalendarIcon, Trash2, Check, ChevronsUpDown,
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
@@ -61,6 +62,7 @@ type Activity = {
 const TYPES = ["call", "meeting", "email", "follow_up"];
 
 export default function LeadActivities() {
+  const { syncCounter } = useRealtimeSync();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,7 +173,9 @@ export default function LeadActivities() {
   useEffect(() => {
     fetchData();
     if (isAdminOrManager || isBDE) fetchDailyReports();
+  }, [isAdminOrManager, isBDE, currentUser?.id, syncCounter]);
 
+  useEffect(() => {
     const bdeChannel = supabase
       .channel("bde-roles-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "user_roles" }, fetchBdeMembers)
@@ -180,7 +184,7 @@ export default function LeadActivities() {
     return () => {
       supabase.removeChannel(bdeChannel);
     };
-  }, [isAdminOrManager, isBDE, currentUser?.id]);
+  }, []);
 
   const handleDeleteReport = async () => {
     if (!reportToDelete) return;
