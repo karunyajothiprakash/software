@@ -13,7 +13,7 @@ router.get('/', requireAuth, async (req, res) => {
              p.full_name as profile_full_name, p.email as profile_email,
              l.company_name as lead_company_name
       FROM crm_tasks t
-      LEFT JOIN profiles p ON t.assigned_to = p.id
+      LEFT JOIN profiles p ON t.assigned_to = p.id::text
       LEFT JOIN leads l ON t.lead_id = l.id
       WHERE t.is_deleted = false
     `;

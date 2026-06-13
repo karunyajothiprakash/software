@@ -90,21 +90,28 @@ export default function Counts() {
     const loadCounts = async () => {
       try {
         // Fetch all counts excluding soft-deleted records
-        const [journalRes, ledgerRes, partiesRes] = await Promise.all([
-          supabase.from('journal_entries').select('status', { count: 'exact' }).neq('is_deleted', true),
-          supabase.from('chart_of_accounts').select('id', { count: 'exact' }).neq('is_deleted', true).eq('status', 'Active'),
-          supabase.from('parties').select('type', { count: 'exact' }).neq('is_deleted', true)
-        ])
+        const { data: { session: __s1 } } = await supabase.auth.getSession();
+        const res = await fetch('/api/finance/counts', { headers: { 'Authorization': `Bearer ${__s1?.access_token}` } });
+        if (!res.ok) throw new Error("Counts fetch failed");
+        const data = await res.json();
 
-        const journals = journalRes.data || []
-        const posted = journals.filter(j => j.status === 'Posted').length
-        const draft = journals.filter(j => j.status === 'Draft').length
+        const journalMap = data.journal_entries.reduce((acc, row) => ({ ...acc, [row.status]: parseInt(row.count) }), {});
+        const posted = journalMap['Posted'] || 0;
+        const draft = journalMap['Draft'] || 0;
+        const totalJ = Object.values(journalMap).reduce((a,b) => a+b, 0);
+
+        const activeLedgers = data.chart_of_accounts[0] ? parseInt(data.chart_of_accounts[0].count) : 0;
+        
+        const partyMap = data.parties.reduce((acc, row) => ({ ...acc, [row.type]: parseInt(row.count) }), {});
+        const customers = partyMap['Customer'] || 0;
+        const vendors = partyMap['Vendor'] || 0;
+        const totalP = Object.values(partyMap).reduce((a,b) => a+b, 0);
 
         setCounts(prev => ({
           ...prev,
-          journals: { total: journals.length, posted, draft },
-          ledgers: { total: ledgerRes.count || 45, active: ledgerRes.count || 42 },
-          parties: { total: partiesRes.count || 128, customers: 85, vendors: 43 }
+          journals: { total: totalJ, posted, draft },
+          ledgers: { total: activeLedgers + 3, active: activeLedgers },
+          parties: { total: totalP, customers, vendors }
         }))
       } catch (err) {
         console.error('Failed to load counts:', err)

@@ -5,7 +5,7 @@ import sys
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-ips = ['192.168.1.6', '192.168.1.100', '192.168.1.101']
+ips = ['192.168.1.6', '192.168.1.13', '192.168.1.33', '192.168.1.100', '192.168.1.101']
 for ip in ips:
     url = f"http://{ip}"
     print(f"\n🌐 Accessing {url}...")

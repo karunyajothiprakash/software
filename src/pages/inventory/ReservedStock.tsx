@@ -107,7 +107,14 @@ export default function ReservedStock() {
           .eq("id", payload.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("reserved_stock").insert([
+        const { data: { session: __session_ins } } = await supabase.auth.getSession();
+        const __res_ins = await fetch(`/api/inventory/reserved_stock`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${__session_ins?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify([
           {
             product_id: payload.product_id,
             warehouse_id: payload.warehouse_id,
@@ -118,7 +125,9 @@ export default function ReservedStock() {
             status: payload.status,
             notes: payload.notes,
           },
-        ]);
+        ])
+        });
+        const error = __res_ins.ok ? null : new Error('Insert failed');
         if (error) throw error;
       }
     },

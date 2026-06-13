@@ -78,7 +78,7 @@ console.log(`🔗 Supabase Target URL: ${SUPABASE_URL}`);
  * 1. GET /iclock/cdata - Handshake & Device Initialization
  * Device queries server configurations and registers itself.
  */
-app.get('/iclock/cdata', (req, res) => {
+app.get(['/iclock/cdata', '/iclock/cdata.aspx'], (req, res) => {
   const sn = req.query.SN || 'UNKNOWN';
   console.log(`\n📡 [GET /iclock/cdata] Handshake received from device SN: ${sn}`);
   console.log("Params:", req.query);
@@ -105,7 +105,7 @@ app.get('/iclock/cdata', (req, res) => {
  * 2. POST /iclock/cdata - Receive Punch Logs (ATTLOG) & Operation Logs (OPERLOG)
  * The device pushes new attendance records here.
  */
-app.post('/iclock/cdata', express.text({ type: '*/*', limit: '10mb' }), async (req, res) => {
+app.post(['/iclock/cdata', '/iclock/cdata.aspx'], express.text({ type: '*/*', limit: '10mb' }), async (req, res) => {
   const sn = req.query.SN || 'UNKNOWN';
   const table = req.query.table || 'UNKNOWN';
   console.log(`\n📥 [POST /iclock/cdata] Data upload from SN: ${sn}, Table: ${table}`);
@@ -206,32 +206,51 @@ app.post('/iclock/cdata', express.text({ type: '*/*', limit: '10mb' }), async (r
           let updatedClockOut = existing.clock_out;
 
           const currentPunchTimeMs = punchTimeUTC.getTime();
+          const punchStatus = parts[2]?.trim();
 
-          if (!updatedClockIn) {
-            updatedClockIn = punchTimeIso;
-          } else {
-            const existingInMs = new Date(updatedClockIn).getTime();
-            if (currentPunchTimeMs < existingInMs) {
-              updatedClockIn = punchTimeIso; // Earlier punch is check_in
+          if (punchStatus === '0') {
+            // Explicit Check-In from device
+            if (!updatedClockIn) {
+              updatedClockIn = punchTimeIso;
+            } else if (currentPunchTimeMs < new Date(updatedClockIn).getTime()) {
+              updatedClockIn = punchTimeIso; // Keep the earliest check-in
             }
-          }
-
-          // Update check_out if the punch is later than check_in and at least 1 minute apart
-          const existingInMs = new Date(updatedClockIn).getTime();
-          if (currentPunchTimeMs > existingInMs) {
+          } else if (punchStatus === '1') {
+            // Explicit Check-Out from device
             if (!updatedClockOut) {
-              if (currentPunchTimeMs - existingInMs >= 60 * 1000) { // 1 min buffer
-                updatedClockOut = punchTimeIso;
-              }
+              updatedClockOut = punchTimeIso;
+            } else if (currentPunchTimeMs > new Date(updatedClockOut).getTime()) {
+              updatedClockOut = punchTimeIso; // Keep the latest check-out
+            }
+          } else {
+            // Fallback to time-based guessing if device doesn't send 0/1 properly
+            if (!updatedClockIn) {
+              updatedClockIn = punchTimeIso;
             } else {
-              const existingOutMs = new Date(updatedClockOut).getTime();
-              if (currentPunchTimeMs > existingOutMs) {
-                updatedClockOut = punchTimeIso; // Later punch is check_out
+              const existingInMs = new Date(updatedClockIn).getTime();
+              if (currentPunchTimeMs < existingInMs) {
+                updatedClockIn = punchTimeIso; // Earlier punch is check_in
+              }
+            }
+            
+            const existingInMsAfter = new Date(updatedClockIn).getTime();
+            if (currentPunchTimeMs > existingInMsAfter) {
+              if (!updatedClockOut) {
+                if (currentPunchTimeMs - existingInMsAfter >= 60 * 1000) { // 1 min buffer
+                  updatedClockOut = punchTimeIso;
+                }
+              } else {
+                const existingOutMs = new Date(updatedClockOut).getTime();
+                if (currentPunchTimeMs > existingOutMs) {
+                  updatedClockOut = punchTimeIso; // Later punch is check_out
+                }
               }
             }
           }
 
           try {
+            updatedClockIn = updatedClockIn ? new Date(updatedClockIn).toISOString() : null;
+            updatedClockOut = updatedClockOut ? new Date(updatedClockOut).toISOString() : null;
             await db.query(
               'UPDATE attendance_logs SET clock_in = $1, clock_out = $2, status = $3 WHERE id = $4',
               [updatedClockIn, updatedClockOut, 'present', existing.id]
@@ -273,7 +292,7 @@ app.post('/iclock/cdata', express.text({ type: '*/*', limit: '10mb' }), async (r
  * 3. GET /iclock/getrequest - Pending commands query
  * Device asks server if there are any commands to execute.
  */
-app.get('/iclock/getrequest', (req, res) => {
+app.get(['/iclock/getrequest', '/iclock/getrequest.aspx'], (req, res) => {
   const sn = req.query.SN || 'UNKNOWN';
   console.log(`\n⏳ [GET /iclock/getrequest] Command request from SN: ${sn}`);
   
@@ -286,7 +305,7 @@ app.get('/iclock/getrequest', (req, res) => {
  * 4. POST /iclock/devicecmd - Command Execution Result
  * Device posts the execution result of commands.
  */
-app.post('/iclock/devicecmd', (req, res) => {
+app.post(['/iclock/devicecmd', '/iclock/devicecmd.aspx'], (req, res) => {
   const sn = req.query.SN || 'UNKNOWN';
   console.log(`\n📥 [POST /iclock/devicecmd] Command execution report from SN: ${sn}`);
   console.log("Payload:", req.body);

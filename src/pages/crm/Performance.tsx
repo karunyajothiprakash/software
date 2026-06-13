@@ -79,48 +79,34 @@ export default function Performance() {
     if (!currentUser?.company_id) return;
     try {
       setLoading(true);
-      const [
-        { data: profiles },
-        { data: leads },
-        { data: activities },
-        { data: followUps },
-        { data: quotations },
-        { data: userRoles },
-        { data: dailyReports },
-        { data: exportOrders }
-      ] = await Promise.all([
-        supabase.from("profiles" as any).select("id, full_name, avatar_url, monthly_target").eq("company_id", currentUser.company_id),
-          supabase.from("leads" as any).select("id, assigned_to, stage, created_at, company_name").or(`company_id.eq.${currentUser.company_id},company_id.is.null`).neq('is_deleted', true),
-          supabase.from("activities" as any).select("*").or(`company_id.eq.${currentUser.company_id},company_id.is.null`).neq('is_deleted', true),
-          supabase.from("follow_ups" as any).select("id, assigned_to, is_notified, created_at").or(`company_id.eq.${currentUser.company_id},company_id.is.null`).neq('is_deleted', true),
-          supabase.from("quotations" as any).select("*").or(`company_id.eq.${currentUser.company_id},company_id.is.null`).neq('is_deleted', true),
-        supabase.from("user_roles" as any).select("user_id, roles(name)"),
-          supabase.from("bde_daily_reports" as any).select("*").eq("company_id", currentUser.company_id).neq('is_deleted', true),
-          supabase.from("export_orders" as any).select("*").or(`company_id.eq.${currentUser.company_id},company_id.is.null`).neq('is_deleted', true)
-      ]);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/analytics/reports_raw?company_id=${currentUser.company_id}`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch performance data");
+      const rawData = await res.json();
 
-      // Manually attach roles to profiles
-      const enrichedProfiles = (profiles || [])
+      // Enriched profiles mapped similarly
+      const enrichedProfiles = (rawData.profiles || [])
         .filter((p: any) => {
           const name = (p.full_name || "").toLowerCase();
           return name.includes("gayathri") || name.includes("vemula");
         })
         .map((p: any) => {
-          const uRole = (userRoles || []).find((ur: any) => ur.user_id === p.id);
           return {
             ...p,
-            role_name: (uRole as any)?.roles?.name || "Employee"
+            role_name: p.role || "Employee"
           };
         });
 
       setData({
         profiles: enrichedProfiles,
-        leads: (leads || []) as any[],
-        activities: (activities || []) as any[],
-        followUps: (followUps || []) as any[],
-        quotations: (quotations || []) as any[],
-        dailyReports: (dailyReports || []) as any[],
-        exportOrders: (exportOrders || []) as any[]
+        leads: rawData.leads || [],
+        activities: rawData.activities || [],
+        followUps: rawData.followUps || [],
+        quotations: rawData.quotations || [],
+        dailyReports: rawData.dailyReports || [],
+        exportOrders: rawData.exportOrders || []
       });
     } catch (error: any) {
       toast.error("Failed to load performance data");
@@ -133,19 +119,6 @@ export default function Performance() {
   useEffect(() => {
     if (!currentUser?.company_id) return;
     fetchData();
-
-    // Re-fetch data automatically when db rows change
-    const channel = supabase.channel('performance-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => { fetchData() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, () => { fetchData() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, () => { fetchData() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bde_daily_reports' }, () => { fetchData() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'export_orders' }, () => { fetchData() })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
   const performanceStats = useMemo(() => {
@@ -338,12 +311,17 @@ export default function Performance() {
     }
 
     try {
-      const { error } = await supabase
-        .from('profiles' as any)
-        .update({ monthly_target: val } as any)
-        .eq('id', employeeId);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/employees/${employeeId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ monthly_target: val })
+      });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to update target");
       toast.success("Target updated successfully");
       setEditingTarget(null);
       fetchData();

@@ -59,14 +59,12 @@ export default function Warehouses() {
     queryKey: ["warehouses_live", profile?.company_id],
     queryFn: async () => {
       if (!profile?.company_id) return [];
-      const { data, error } = await supabase
-        .from("warehouses")
-        .select(`*, inventory_batches(quantity_remaining_kg, product:products(category))`)
-        .eq("company_id", profile.company_id)
-        .neq("is_deleted", true)
-        .order("name");
-
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/warehouse/with-stock', {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch warehouses');
+      const data = await res.json();
 
       return (data || []).map(w => {
         const batchData = w.inventory_batches || [];
@@ -129,13 +127,28 @@ export default function Warehouses() {
         notes: form.notes,
       };
 
+      const { data: { session } } = await supabase.auth.getSession();
       if (editingId) {
-        const { error } = await supabase.from("warehouses").update(payload).eq("id", editingId);
-        if (error) throw error;
+        const res = await fetch(`/api/warehouse/warehouses/${editingId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Failed to update warehouse');
         toast.success("Warehouse updated");
       } else {
-        const { error } = await supabase.from("warehouses").insert({ ...payload, company_id: profile?.company_id, is_active: true });
-        if (error) throw error;
+        const res = await fetch(`/api/warehouse/warehouses`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ ...payload, company_id: profile?.company_id, is_active: true })
+        });
+        if (!res.ok) throw new Error('Failed to create warehouse');
         toast.success("Warehouse created");
       }
       resetAndClose();
@@ -151,13 +164,21 @@ export default function Warehouses() {
   const handleDelete = async (id: string, warehouseName: string) => {
     if (!confirm(`Delete "${warehouseName}"? This will hide the warehouse from the app.`)) return;
     try {
-      const { error } = await supabase.from("warehouses").update({
-        is_deleted: true,
-        is_active: false,
-        deleted_at: new Date().toISOString(),
-        deleted_by: profile?.id || null,
-      }).eq("id", id);
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/warehouse/warehouses/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          is_deleted: true,
+          is_active: false,
+          deleted_at: new Date().toISOString(),
+          deleted_by: profile?.id || null,
+        })
+      });
+      if (!res.ok) throw new Error('Failed to delete warehouse');
       toast.success("Warehouse hidden from the app");
       queryClient.invalidateQueries({ queryKey: ["warehouses_live"] });
       queryClient.invalidateQueries({ queryKey: ["warehouses"] });

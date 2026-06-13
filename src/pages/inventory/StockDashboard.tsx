@@ -33,7 +33,12 @@ export default function StockDashboard() {
   const { data: products, isLoading: isLoadingProducts } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("id, name");
+      const { data: { session: __session_sel } } = await supabase.auth.getSession();
+        const __res_sel = await fetch(`/api/inventory/products`, {
+          headers: { 'Authorization': `Bearer ${__session_sel?.access_token}` }
+        });
+        const data = __res_sel.ok ? await __res_sel.json() : null;
+        const error = __res_sel.ok ? null : new Error('Select failed');
       if (error) console.error("Products load error:", error);
       return data || [];
     }
@@ -42,7 +47,12 @@ export default function StockDashboard() {
   const { data: warehouses, isLoading: isLoadingWarehouses } = useQuery({
     queryKey: ["warehouses"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("warehouses").select("id, name");
+      const { data: { session: __session_sel } } = await supabase.auth.getSession();
+        const __res_sel = await fetch(`/api/warehouse/warehouses`, {
+          headers: { 'Authorization': `Bearer ${__session_sel?.access_token}` }
+        });
+        const data = __res_sel.ok ? await __res_sel.json() : null;
+        const error = __res_sel.ok ? null : new Error('Select failed');
       if (error) console.error("Warehouses load error:", error);
       return data || [];
     }
@@ -93,7 +103,13 @@ export default function StockDashboard() {
       const userId = session?.user?.id;
 
       // Get company_id from profile
-      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', userId).single();
+      const { data: profile } = await (async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch(`/api/inventory/profiles`, {
+            headers: { 'Authorization': `Bearer ${session?.access_token}` }
+          });
+          return { data: res.ok ? await res.json() : null };
+        })().eq('id', userId).single();
 
       const { error } = await supabase.from("inventory_batches").insert({
         company_id: profile?.company_id,

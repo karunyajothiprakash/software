@@ -95,26 +95,40 @@ export function EsslUploader({ employees, onUploadComplete }: EsslUploaderProps)
         const clockOutIso = rawOut ? new Date(`${punchDateStr}T${rawOut}`).toISOString() : null;
 
         // Upsert logic (check if exists)
-        const { data: existing } = await supabase
-          .from('attendance_logs')
-          .select('id')
-          .eq('employee_id', emp.id)
-          .eq('date', punchDateStr)
-          .maybeSingle();
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`/api/hr/attendance_logs?employee_id=${emp.id}&date=${punchDateStr}`, {
+          headers: { 'Authorization': `Bearer ${session?.access_token}` }
+        });
+        const existingArr = res.ok ? await res.json() : null;
+        const existing = existingArr && existingArr.length > 0 ? existingArr[0] : null;
 
         if (existing) {
-          await supabase.from('attendance_logs').update({
-            clock_in: clockInIso,
-            clock_out: clockOutIso,
-            status: 'present'
-          }).eq('id', existing.id);
+          await fetch(`/api/hr/attendance_logs/${existing.id}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${session?.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              clock_in: clockInIso,
+              clock_out: clockOutIso,
+              status: 'present'
+            })
+          });
         } else {
-          await supabase.from('attendance_logs').insert({
-            employee_id: emp.id,
-            date: punchDateStr,
-            status: 'present',
-            clock_in: clockInIso,
-            clock_out: clockOutIso
+          await fetch('/api/hr/attendance_logs', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session?.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              employee_id: emp.id,
+              date: punchDateStr,
+              status: 'present',
+              clock_in: clockInIso,
+              clock_out: clockOutIso
+            })
           });
         }
         successCount++;

@@ -44,14 +44,12 @@ export default function GSTReports() {
     
     setLoading(true)
     try {
-      const { data: records, error } = await supabase
-        .from('gst_transactions')
-        .select('*')
-        .eq('company_id', company_id)
-        .neq('is_deleted', true)
-        .order('date', { ascending: false })
-
-      if (error) throw error
+      const { data: { session: __s1 } } = await supabase.auth.getSession();
+      const res = await fetch('/api/finance/gst_transactions', { headers: { 'Authorization': `Bearer ${__s1?.access_token}` } });
+      const records = res.ok ? await res.json() : [];
+      // Optionally sort client-side
+      records.sort((a, b) => new Date(b.date) - new Date(a.date));
+      const error = res.ok ? null : new Error("Fetch failed");
       setData(records || [])
     } catch (error) {
       toast.error('Unable to load GST reports.')
@@ -91,23 +89,26 @@ export default function GSTReports() {
       const iAmt = parseFloat(igst) || 0
       const total = tAmt + cAmt + sAmt + iAmt
 
-      const { error } = await supabase.from('gst_transactions').insert([{
-        company_id,
-        date,
-        party,
-        gstin,
-        invoice_no: invoiceNo,
-        taxable_amt: tAmt,
-        cgst: cAmt,
-        sgst: sAmt,
-        igst: iAmt,
-        total,
-        type,
-        is_deleted: false,
-        deleted_at: null
-      }])
-
-      if (error) throw error
+      const { data: { session: __s2 } } = await supabase.auth.getSession();
+      const res = await fetch('/api/finance/gst_transactions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${__s2?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([{
+          date,
+          party,
+          gstin,
+          invoice_no: invoiceNo,
+          taxable_amt: tAmt,
+          cgst: cAmt,
+          sgst: sAmt,
+          igst: iAmt,
+          total,
+          type,
+          is_deleted: false,
+          deleted_at: null
+        }])
+      });
+      const error = res.ok ? null : new Error("Insert failed");
 
       toast.success('GST entry added successfully')
       setOpen(false)
@@ -134,13 +135,12 @@ export default function GSTReports() {
     if (!window.confirm('Hide this GST record from the report? The record will remain in the database for audit and recovery.')) return
     setDeletingId(id)
     try {
-      const { error } = await supabase
-        .from('gst_transactions')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-        .eq('id', id)
-        .eq('company_id', company_id)
-
-      if (error) throw error
+      const { data: { session: __s3 } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/finance/gst_transactions/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${__s3?.access_token}` }
+      });
+      const error = res.ok ? null : new Error("Hide failed");
 
       setData(prev => prev.filter(record => record.id !== id))
       toast.success('GST record hidden from view; underlying data retained.')

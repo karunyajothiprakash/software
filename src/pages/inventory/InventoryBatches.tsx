@@ -95,8 +95,20 @@ export default function InventoryBatches() {
             .eq("company_id", profile.company_id)
             .neq("is_deleted", true)
             .order("received_date", { ascending: false }),
-          supabase.from("products").select("id, name, grade"),
-          supabase.from("warehouses").select("id, name"),
+          (async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch(`/api/inventory/products`, {
+            headers: { 'Authorization': `Bearer ${session?.access_token}` }
+          });
+          return { data: res.ok ? await res.json() : null };
+        })(),
+          (async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch(`/api/warehouse/warehouses`, {
+            headers: { 'Authorization': `Bearer ${session?.access_token}` }
+          });
+          return { data: res.ok ? await res.json() : null };
+        })(),
         ]);
 
         if (batchesRes.error) throw batchesRes.error;

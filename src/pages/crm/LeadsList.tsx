@@ -442,6 +442,25 @@ export default function LeadsList() {
     }
   };
 
+  const toggleLeadStatus = async (lead: Lead, newStage: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ stage: newStage })
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      toast.success(`Lead status updated to ${newStage}`);
+      fetchLeads();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update status");
+    }
+  };
+
   const handleExportPDF = () => {
     exportCRMtoPDF("crm-table", isPrivileged, filteredLeads.length);
   };
@@ -885,19 +904,20 @@ export default function LeadsList() {
               <TableHead className="text-foreground font-bold">Stage</TableHead>
 
               <TableHead className="text-foreground font-bold">Assigned To</TableHead>
+              <TableHead className="text-foreground font-bold text-center">Open/Close</TableHead>
               <TableHead className="text-right text-foreground font-bold">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={13} className="text-center py-12 text-muted-foreground">
                   <Loader2 className="h-8 w-8 animate-spin mx-auto opacity-20" />
                 </TableCell>
               </TableRow>
             ) : filteredLeads.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-12 text-muted-foreground italic">
+                <TableCell colSpan={13} className="text-center py-12 text-muted-foreground italic">
                   {searchQuery ? `No leads matching "${searchQuery}"` : "No leads found."}
                 </TableCell>
               </TableRow>
@@ -995,6 +1015,27 @@ export default function LeadsList() {
                   <TableCell className="text-xs text-muted-foreground font-medium">
                     {lead.assigned_to || "Unassigned"}
                   </TableCell>
+                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                    {OPEN_STAGES.some(s => s.toLowerCase() === lead.stage?.toLowerCase()) ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-[10px] font-bold uppercase tracking-wider text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/20"
+                        onClick={() => toggleLeadStatus(lead, "Lost")}
+                      >
+                        Close
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-[10px] font-bold uppercase tracking-wider text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10 border-emerald-500/20"
+                        onClick={() => toggleLeadStatus(lead, "New")}
+                      >
+                        Open
+                      </Button>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button
@@ -1047,20 +1088,7 @@ export default function LeadsList() {
                           Convert
                         </Button>
                       )}
-                      {isPrivileged && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 hover:bg-destructive/10"
-                          onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            confirmDelete(lead.id);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive opacity-50 hover:opacity-100" />
-                        </Button>
-                      )}
+                      {/* Delete button removed */}
                     </div>
                   </TableCell>
                 </TableRow>

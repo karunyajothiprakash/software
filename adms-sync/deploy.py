@@ -50,7 +50,7 @@ def main():
     print(f"✅ Loaded Supabase URL: {supabase_url}")
 
     # Prompt user for VPS root password securely
-    password = getpass.getpass(f"🔐 Enter root password for Hostinger VPS ({VPS_IP}): ")
+    password = "SHASTIKARAM@2026"
     if not password:
         print("❌ Error: Password cannot be empty.")
         sys.exit(1)
@@ -81,12 +81,28 @@ def main():
         local_server_js = os.path.join(current_dir, 'server.js')
         sftp.put(local_server_js, '/var/www/adms-sync/server.js')
 
+        # Upload db.js
+        print("📤 Uploading db.js...")
+        local_db_js = os.path.join(current_dir, 'db.js')
+        sftp.put(local_db_js, '/var/www/adms-sync/db.js')
+
+        # Upload routes/attendance.js
+        print("📤 Uploading routes/attendance.js...")
+        local_att_js = os.path.join(current_dir, 'routes', 'attendance.js')
+        sftp.put(local_att_js, '/var/www/adms-sync/routes/attendance.js')
+
+        # Upload routes/crm.js (to match updated local/VPS)
+        print("📤 Uploading routes/crm.js...")
+        local_crm_js = os.path.join(current_dir, 'routes', 'crm.js')
+        sftp.put(local_crm_js, '/var/www/adms-sync/routes/crm.js')
+
         # Generate and upload .env
         print("📤 Uploading remote .env...")
         env_content = f"""PORT=8082
 SUPABASE_URL={supabase_url}
 SUPABASE_SERVICE_ROLE_KEY={supabase_key}
 DEVICE_TIMEZONE_OFFSET=+05:30
+PG_PASSWORD=Shastika2026
 """
         sftp.putfo(io.BytesIO(env_content.encode('utf-8')), '/var/www/adms-sync/.env')
 

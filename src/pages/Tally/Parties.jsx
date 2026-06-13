@@ -7,7 +7,7 @@ import { Plus, AlertTriangle, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import ConfirmDialog from '../../components/ui/ConfirmDialogLegacy'
 
 
 const SearchBar = ({ placeholder, value, onChange, children }) => (

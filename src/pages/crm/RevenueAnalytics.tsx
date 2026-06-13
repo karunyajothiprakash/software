@@ -33,19 +33,14 @@ export default function RevenueAnalytics() {
         if (!profile?.company_id) return;
         setLoading(true);
         try {
-            const [
-                { data: profiles },
-                { data: leads },
-                { data: quotations },
-                { data: exportOrders }
-            ] = await Promise.all([
-                supabase.from("profiles" as any).select("id, full_name").eq("company_id", profile.company_id),
-                supabase.from("leads" as any).select("id, company_name, country, assigned_to, stage, created_at").eq('company_id', profile.company_id).neq('is_deleted', true),
-                supabase.from("quotations" as any).select("id, lead_id, total_amount, amount, created_by, created_at, status").eq('company_id', profile.company_id).neq('is_deleted', true),
-                supabase.from("export_orders" as any).select("id, order_number, customer_name, customer_country, total_amount, order_date, created_at").eq('company_id', profile.company_id).neq('is_deleted', true)
-            ]);
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`/api/analytics/reports_raw?company_id=${profile.company_id}`, {
+                headers: { 'Authorization': `Bearer ${session?.access_token}` }
+            });
+            if (!res.ok) throw new Error("Failed to fetch raw data");
+            const rawData = await res.json();
 
-            const rawOrders = exportOrders || [];
+            const rawOrders = rawData.exportOrders || [];
             // Remove the 2 legacy test dummy orders created in May 2026
             const cleanOrders = rawOrders.filter((o: any) =>
                 !['159c447b-ac1b-46e0-8975-f3649fe7293a', 'f3f01e0e-2990-458d-bb3d-3778e3d955b5'].includes(o.id)
@@ -53,9 +48,9 @@ export default function RevenueAnalytics() {
 
             // Use all profiles from the database (no artificial filtering)
             setData({
-                profiles: profiles || [],
-                leads: leads || [],
-                quotations: quotations || [],
+                profiles: rawData.profiles || [],
+                leads: rawData.leads || [],
+                quotations: rawData.quotations || [],
                 orders: cleanOrders
             });
         } catch (error) {
@@ -69,17 +64,6 @@ export default function RevenueAnalytics() {
     useEffect(() => {
         if (!profile?.company_id) return;
         fetchData();
-
-        // Subscribe to real-time changes across all tracking tables
-        const channel = supabase.channel('revenue-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => { fetchData() })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, () => { fetchData() })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'export_orders' }, () => { fetchData() })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
     }, []);
 
     // Strictly use ONLY actual Export Orders for generating revenue. No fallbacks.

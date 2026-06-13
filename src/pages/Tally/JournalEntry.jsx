@@ -43,14 +43,12 @@ function NewEntryForm({ onSaved }) {
       try {
         if (!profile?.company_id) return;
 
-        // Fetch from chart_of_accounts table
-        const { data: coaData, error: coaError } = await supabase
-          .from('chart_of_accounts')
-          .select('id, name')
-          .eq('company_id', profile.company_id)
-          .eq('status', 'Active')
-          .neq('is_deleted', true)
-          .order('name')
+        const { data: { session: __s1 } } = await supabase.auth.getSession();
+        const res = await fetch(`/api/finance/chart_of_accounts?company_id=${profile.company_id}&status=Active`, {
+          headers: { 'Authorization': `Bearer ${__s1?.access_token}` }
+        });
+        const coaData = res.ok ? await res.json() : [];
+        const coaError = res.ok ? null : new Error("Failed to load chart of accounts");
         
         if (coaError) {
           console.error("Failed to load chart of accounts:", coaError)
@@ -113,10 +111,11 @@ function NewEntryForm({ onSaved }) {
     try {
       const voucherNo = `JV-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`
       
-      // Insert journal entry
-      const { data: entry, error: entryError } = await supabase
-        .from('journal_entries')
-        .insert({
+      const { data: { session: __s2 } } = await supabase.auth.getSession();
+      const resEntry = await fetch('/api/finance/journal_entries', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${__s2?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           company_id: profile.company_id,
           voucher_no: voucherNo,
           voucher_type: voucherType,
@@ -127,16 +126,15 @@ function NewEntryForm({ onSaved }) {
           total_debit: totDr,
           total_credit: totCr
         })
-        .select('id')
-        .single()
+      });
 
-      if (entryError) {
-        console.error("Insert error:", entryError)
-        throw new Error(entryError.message || "Failed to save journal entry")
+      if (!resEntry.ok) {
+        throw new Error("Failed to save journal entry");
       }
+      const entry = await resEntry.json();
 
       if (!entry?.id) {
-        throw new Error("Failed to create journal entry")
+        throw new Error("Failed to create journal entry");
       }
 
       // Insert journal entry rows
@@ -161,13 +159,14 @@ function NewEntryForm({ onSaved }) {
         })
 
       if (rowPayload.length > 0) {
-        const { error: rowError } = await supabase
-          .from('journal_entry_rows')
-          .insert(rowPayload)
+        const resRows = await fetch('/api/finance/journal_entry_rows', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${__s2?.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(rowPayload)
+        });
 
-        if (rowError) {
-          console.error("Row insert error:", rowError)
-          throw new Error(rowError.message || "Failed to save journal entry rows")
+        if (!resRows.ok) {
+          throw new Error("Failed to save journal entry rows");
         }
       }
 
@@ -414,12 +413,11 @@ export default function JournalEntry() {
 
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('journal_entries')
-        .select('*')
-        .eq('company_id', profile.company_id)
-        .neq('is_deleted', true)
-        .order('created_at', { ascending: false })
+      const { data: { session: __s3 } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/finance/journal_entries?company_id=${profile.company_id}`, { headers: { 'Authorization': `Bearer ${__s3?.access_token}` } });
+      let data = res.ok ? await res.json() : [];
+      data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      let error = res.ok ? null : new Error("Fetch failed");
 
       if (error) {
         console.error("Fetch entries error:", error)

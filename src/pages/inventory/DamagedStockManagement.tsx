@@ -103,7 +103,14 @@ export default function DamagedStockManagement() {
           .eq("id", payload.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("damaged_stock").insert([
+        const { data: { session: __session_ins } } = await supabase.auth.getSession();
+        const __res_ins = await fetch(`/api/inventory/damaged_stock`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${__session_ins?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify([
           {
             product_name: payload.product_name,
             batch_number: payload.batch_number,
@@ -117,7 +124,9 @@ export default function DamagedStockManagement() {
             action_taken: payload.action_taken,
             notes: payload.notes,
           },
-        ]);
+        ])
+        });
+        const error = __res_ins.ok ? null : new Error('Insert failed');
         if (error) throw error;
       }
     },

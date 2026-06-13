@@ -4,7 +4,7 @@ import sys
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-password = 'SHASTIKARAM#@97may'
+password = 'SHASTIKARAM@2026'
 VPS_IP = '195.35.22.13'
 VPS_PORT = 22
 VPS_USER = 'root'

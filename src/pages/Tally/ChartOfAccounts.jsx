@@ -6,7 +6,7 @@ import { Plus, CheckCircle, XCircle, Trash2, BookOpen, TrendingUp, TrendingDown,
 import { toast } from 'sonner'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
-import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import ConfirmDialog from '../../components/ui/ConfirmDialogLegacy'
 
 const DEFAULT_ACCOUNTS = [
   { code: '1001', name: 'Cash', group: 'Current Assets', type: 'Asset', balance: '₹4,20,000', gst: false, status: 'Active' },

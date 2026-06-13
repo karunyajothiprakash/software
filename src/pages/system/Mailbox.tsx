@@ -263,15 +263,8 @@ export default function Mailbox() {
       setSentEmails(prev => prev.map(e => e.id === email.id ? { ...e, is_read: true } : e));
       setSelectedEmail((prev: any) => prev?.id === email.id ? { ...prev, is_read: true } : prev);
 
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          fetch(`/api/emails/${email.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-            body: JSON.stringify({ is_read: true })
-          }).catch(err => console.error("Failed to mark email as read in database:", err));
-        }
-      });
+      supabase.from('emails').update({ is_read: true }).eq('id', email.id)
+        .then(({ error }) => { if (error) console.error("Failed to mark email as read in database:", error); });
     }
     setIsComposing(false);
 
@@ -366,13 +359,12 @@ export default function Mailbox() {
         roleSlugs?.has("bde") ||
         (profile?.requested_role && ["bd", "bde"].includes(profile.requested_role.toLowerCase()));
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/emails/accounts', {
-        headers: { 'Authorization': `Bearer ${session?.access_token}` }
-      });
+      const { data: accountsData, error } = await supabase
+        .from('zoho_accounts')
+        .select('*');
       
-      if (!res.ok) { toast.error("Failed to fetch accounts"); return; }
-      let data = await res.json();
+      if (error) { toast.error("Failed to fetch accounts"); return; }
+      let data = accountsData || [];
 
       if (!isAdmin) {
         if (isBde) {
@@ -397,14 +389,15 @@ export default function Mailbox() {
   }
 
   async function fetchHistory(accountId: string) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const res = await fetch(`/api/emails?account_id=${accountId}`, {
-      headers: { 'Authorization': `Bearer ${session?.access_token}` }
-    });
+    const { data: emailsData, error } = await supabase
+      .from('emails')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('received_at', { ascending: false })
+      .limit(500);
 
-    if (!res.ok) { toast.error("Failed to fetch email history"); return; }
-    const data = await res.json();
-    if (data) setSentEmails(data);
+    if (error) { toast.error("Failed to fetch email history"); return; }
+    if (emailsData) setSentEmails(emailsData);
   }
 
   async function syncEmails(accountId: string, isManual = false) {

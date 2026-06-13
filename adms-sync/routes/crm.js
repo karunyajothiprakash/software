@@ -192,7 +192,7 @@ router.get('/:id/activities', requireAuth, async (req, res) => {
     const result = await db.query(
       `SELECT a.*, p.full_name as profile_full_name 
        FROM lead_activities a
-       LEFT JOIN profiles p ON a.created_by = p.id
+       LEFT JOIN profiles p ON a.created_by = p.id::text
        WHERE a.lead_id = $1 
        ORDER BY a.created_at DESC`,
       [req.params.id]

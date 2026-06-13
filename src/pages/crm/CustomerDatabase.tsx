@@ -93,16 +93,21 @@ function CustomerDatabase() {
 
   const fetchLeads = async () => {
     setLoadingData(true);
-    const { data, error } = await supabase
-      .from("leads")
-      .select("*")
-      .not('is_deleted', 'eq', true)
-      .order("created_at", { ascending: false });
-      
-    if (!error && data) {
-      setCustomers(data);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No active session");
+      const res = await fetch('/api/leads', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch leads");
+      const data = await res.json();
+      const activeLeads = (data || []).filter((l: any) => !l.is_deleted);
+      setCustomers(activeLeads);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load customers");
+    } finally {
+      setLoadingData(false);
     }
-    setLoadingData(false);
   };
 
   useEffect(() => {
@@ -150,58 +155,36 @@ function CustomerDatabase() {
 
     const fetchDetails = async () => {
       setLoading(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error("No active session");
+        const authHeader = { 'Authorization': `Bearer ${session.access_token}` };
 
-      // Inquiries
-      if (selected.company_name) {
-        const { data: inqData } = await supabase
-          .from("leads")
-          .select("*")
-          .eq("company_name", selected.company_name)
-          .order("created_at", { ascending: false });
-        if (inqData) setInquiries(inqData);
+        // Inquiries (filter all active leads of same company)
+        const leadsRes = await fetch('/api/leads', { headers: authHeader });
+        const allLeads = leadsRes.ok ? await leadsRes.json() : [];
+        const inqData = allLeads.filter((l: any) => l.company_name === selected.company_name && !l.is_deleted);
+        setInquiries(inqData);
+
+        // Quotations
+        const qRes = await fetch(`/api/leads/${selected.id}/quotations`, { headers: authHeader });
+        const qData = qRes.ok ? await qRes.json() : [];
+        setQuotations(qData);
+
+        // Follow Ups
+        const followRes = await fetch(`/api/leads/${selected.id}/follow-ups`, { headers: authHeader });
+        const followData = followRes.ok ? await followRes.json() : [];
+        setFollowUps(followData);
+
+        // Activity Logs
+        const actRes = await fetch(`/api/leads/${selected.id}/activities`, { headers: authHeader });
+        const actData = actRes.ok ? await actRes.json() : [];
+        setActivities(actData);
+      } catch (err: any) {
+        console.error("Error fetching lead details:", err);
+      } finally {
+        setLoading(false);
       }
-
-      // Quotations
-      const { data: qData } = await supabase
-        .from("quotations")
-        .select("*")
-        .order("created_at", { ascending: false });
-        
-      if (qData) {
-        // Filter in memory to handle OR condition gracefully
-        const filteredQ = qData.filter(q => 
-          q.lead_id === selected.id || 
-          (q.customer_name && q.customer_name === selected.company_name)
-        );
-        setQuotations(filteredQ);
-      }
-
-      // Follow Ups
-      const { data: followData } = await supabase
-        .from("follow_ups")
-        .select("*")
-        .eq("lead_id", selected.id)
-        .order("created_at", { ascending: false });
-      if (followData) setFollowUps(followData);
-
-      // Activity Logs
-      const { data: fbData } = await supabase
-        .from("activity_logs")
-        .select("*")
-        .eq("entity", "LEAD")
-        .order("created_at", { ascending: false });
-        
-      if (fbData) {
-         const filtered = fbData.filter((a: any) => 
-          (a.action && a.action.includes(selected.company_name)) || 
-          (a.action && a.action.includes(selected.contact_name))
-        );
-        setActivities(filtered);
-      } else {
-        setActivities([]);
-      }
-
-      setLoading(false);
     };
 
     fetchDetails();
@@ -210,12 +193,18 @@ function CustomerDatabase() {
   const handleReassign = async (newAssignee: string) => {
     if (!selected) return;
     try {
-      const { error } = await supabase
-        .from("leads")
-        .update({ assigned_to: newAssignee })
-        .eq("id", selected.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No active session");
+      const res = await fetch(`/api/leads/${selected.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ assigned_to: newAssignee })
+      });
+      if (!res.ok) throw new Error("Failed to reassign lead");
       
-      if (error) throw error;
       toast.success(`Lead reassigned to ${newAssignee}`);
       setSelected({ ...selected, assigned_to: newAssignee });
       await fetchLeads(); // Refresh the lead data

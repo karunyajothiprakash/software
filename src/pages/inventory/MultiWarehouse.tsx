@@ -118,20 +118,27 @@ export default function MultiWarehouse() {
           .eq("id", payload.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("warehouses").insert([
-          {
-            name: payload.name,
-            location: payload.location,
-            city: payload.city,
-            capacity: payload.capacity ? Number(payload.capacity) : null,
-            capacity_unit: payload.capacity_unit,
-            manager_name: payload.manager_name,
-            contact_number: payload.contact_number,
-            status: payload.status,
-            notes: payload.notes,
+        const { data: { session: __session_w } } = await supabase.auth.getSession();
+        const __res_w = await fetch('/api/warehouse/warehouses', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${__session_w?.access_token}`,
+            'Content-Type': 'application/json'
           },
-        ]);
-        if (error) throw error;
+          body: JSON.stringify([{
+            name: warehouseFormState.name,
+            location: warehouseFormState.location,
+            city: warehouseFormState.city,
+            capacity: warehouseFormState.capacity,
+            capacity_unit: warehouseFormState.capacity_unit,
+            manager_name: warehouseFormState.manager_name,
+            contact_number: warehouseFormState.contact_number,
+            status: warehouseFormState.status,
+            notes: warehouseFormState.notes,
+            company_id: profile?.company_id,
+          }])
+        });
+        const error = __res_w.ok ? null : new Error("Insert failed");if (error) throw error;
       }
     },
     onSuccess: () => {
@@ -159,17 +166,24 @@ export default function MultiWarehouse() {
           .eq("id", payload.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("warehouse_stock").insert([
-          {
-            warehouse_id: payload.warehouse_id,
-            product_name: payload.product_name,
-            quantity: Number(payload.quantity),
-            unit: payload.unit,
-            last_updated: payload.last_updated,
-            notes: payload.notes,
+        const { data: { session: __session_ws } } = await supabase.auth.getSession();
+        const __res_ws = await fetch('/api/inventory/warehouse_stock', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${__session_ws?.access_token}`,
+            'Content-Type': 'application/json'
           },
-        ]);
-        if (error) throw error;
+          body: JSON.stringify([{
+            warehouse_id: selectedWarehouse,
+            product_name: stockFormState.product_name,
+            quantity: stockFormState.quantity,
+            unit: stockFormState.unit,
+            last_updated: stockFormState.last_updated,
+            notes: stockFormState.notes,
+            company_id: profile?.company_id,
+          }])
+        });
+        const error = __res_ws.ok ? null : new Error("Insert failed");if (error) throw error;
       }
     },
     onSuccess: () => {
@@ -181,16 +195,18 @@ export default function MultiWarehouse() {
     onError: (err: any) => toast.error(err.message || "Failed to save stock."),
   });
 
-  const { profile } = useAuth();
-
   const deleteWarehouseMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("warehouses").update({
-        is_deleted: true,
-        is_active: false,
-        deleted_at: new Date().toISOString(),
-        deleted_by: profile?.id || null,
-      }).eq("id", id);
+      const { data: { session: __session_wd } } = await supabase.auth.getSession();
+      const __res_wd = await fetch(`/api/warehouse/warehouses/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${__session_wd?.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ is_deleted: true })
+      });
+      const error = __res_wd.ok ? null : new Error("Update failed");
       if (error) throw error;
     },
     onSuccess: () => {
@@ -203,11 +219,16 @@ export default function MultiWarehouse() {
 
   const deleteStockMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("warehouse_stock").update({
-        is_deleted: true,
-        deleted_at: new Date().toISOString(),
-        deleted_by: profile?.id || null,
-      }).eq("id", id);
+      const { data: { session: __session_wsd } } = await supabase.auth.getSession();
+      const __res_wsd = await fetch(`/api/inventory/warehouse_stock/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${__session_wsd?.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ is_deleted: true })
+      });
+      const error = __res_wsd.ok ? null : new Error("Update failed");
       if (error) throw error;
     },
     onSuccess: () => {

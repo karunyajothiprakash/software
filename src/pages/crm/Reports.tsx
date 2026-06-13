@@ -186,35 +186,22 @@ export default function Reports() {
   const fetchRawData = async () => {
     setLoading(true);
     try {
-      const [
-        { data: profilesData },
-        { data: leadsData },
-        { data: activitiesData },
-        { data: followUpsData },
-        { data: quotationsData },
-        { data: exportOrdersData },
-        { data: acquisitionsData },
-        { data: dailyReportsData }
-      ] = await Promise.all([
-        supabase.from("profiles" as any).select("id, full_name, avatar_url, role, monthly_target"),
-        supabase.from("leads" as any).select("*"),
-        supabase.from("activities" as any).select("*"),
-        supabase.from("follow_ups" as any).select("*"),
-        supabase.from("quotations" as any).select("*"),
-        supabase.from("export_orders" as any).select("*"),
-        supabase.from("client_acquisition" as any).select("*"),
-        supabase.from("bde_daily_reports" as any).select("*").order("report_date", { ascending: false })
-      ]);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/analytics/reports_raw?company_id=${currentUser?.company_id || ''}`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch raw data");
+      const data = await res.json();
 
       setRawDbData({
-        profiles: profilesData || [],
-        leads: leadsData || [],
-        activities: activitiesData || [],
-        followUps: followUpsData || [],
-        quotations: quotationsData || [],
-        exportOrders: exportOrdersData || [],
-        acquisitions: acquisitionsData || [],
-        dailyReports: dailyReportsData || []
+        profiles: data.profiles || [],
+        leads: data.leads || [],
+        activities: data.activities || [],
+        followUps: data.followUps || [],
+        quotations: data.quotations || [],
+        exportOrders: data.exportOrders || [],
+        acquisitions: data.acquisitions || [],
+        dailyReports: data.dailyReports || []
       });
     } catch (err) {
       console.error("Failed to fetch database tables:", err);
@@ -230,28 +217,9 @@ export default function Reports() {
     setCompiling(true);
     
     try {
-      const startIso = weeklyStartDate.toISOString();
-      const endIso = weeklyEndDate.toISOString();
-      
-      const [
-        { data: wData, error: wError },
-        { data: mData, error: mError },
-        { data: pData, error: pError },
-        { data: cData, error: cError }
-      ] = await Promise.all([
-        supabase.rpc('get_weekly_performance_report', { start_date: startIso, end_date: endIso, bde_id_param: selectedBDE }),
-        supabase.rpc('get_monthly_sales_report', { month_date: selectedMonth, bde_id_param: selectedBDE }),
-        supabase.rpc('get_monthly_top_products', { month_date: selectedMonth, bde_id_param: selectedBDE }),
-        supabase.rpc('get_monthly_country_sales', { month_date: selectedMonth, bde_id_param: selectedBDE })
-      ]);
-
-      if (wError || mError || pError || cError) throw new Error("RPC Call Failed");
-
-      setWeeklyReportBackend(wData?.[0] || null);
-      setMonthlyReportBackend(mData?.[0] || null);
-      setTopProductsBackend(pData || []);
-      setCountrySalesBackend(cData || []);
-      setUseBackendRPC(true);
+      // Intentionally defaulting to frontend calculations using rawDbData
+      // to avoid Supabase RPCs after VPS migration.
+      setUseBackendRPC(false);
     } catch (err) {
       console.warn("Backend RPC reports not found or failed, falling back to frontend calculations");
       setUseBackendRPC(false);
@@ -279,11 +247,16 @@ export default function Reports() {
   const handleSaveTargets = async () => {
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const promises = Object.entries(targetsToUpdate).map(([id, target]) => {
-        return supabase
-          .from('profiles' as any)
-          .update({ monthly_target: Number(target) } as any)
-          .eq('id', id);
+        return fetch(`/api/employees/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
+          body: JSON.stringify({ monthly_target: Number(target) })
+        });
       });
       await Promise.all(promises);
       toast.success("Sales targets updated successfully!");
@@ -1895,8 +1868,18 @@ export default function Reports() {
                 };
               }
 
-              const { error } = await supabase.from('bde_daily_reports' as any).insert(payload as any);
-              if (error) throw error;
+              const { data: { session } } = await supabase.auth.getSession();
+              const res = await fetch('/api/analytics/daily_reports', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session?.access_token}`
+                },
+                body: JSON.stringify(payload)
+              });
+              
+              if (!res.ok) throw new Error("Failed to insert daily report");
+
               toast.success(`${modalReportType.toUpperCase()} report submitted successfully`);
               setIsReportModalOpen(false);
               setReportForm({

@@ -66,12 +66,12 @@ router.put('/mark-od', requireAuth, async (req, res) => {
     if (rows.length > 0) {
       await db.query(
         'UPDATE attendance_logs SET status = $1, is_manual = true, clock_in = $2, notes = $3, is_deleted = false, deleted_at = null, deleted_by = null WHERE employee_id = $4 AND date = $5',
-        ['OD', check_in, od_reason || 'Field Trip (OD)', employee_id, date]
+        ['present', check_in, od_reason || 'Field Trip (OD)', employee_id, date]
       );
     } else {
       await db.query(
         'INSERT INTO attendance_logs (employee_id, date, clock_in, status, is_manual, notes) VALUES ($1, $2, $3, $4, true, $5)',
-        [employee_id, date, check_in, 'OD', od_reason || 'Field Trip (OD)']
+        [employee_id, date, check_in, 'present', od_reason || 'Field Trip (OD)']
       );
     }
     res.json({ success: true });

@@ -33,25 +33,17 @@ export default function PaymentsRegister() {
     queryFn: async () => {
       if (!profile?.company_id) return [];
 
-      // Fetch confirmed payments
-      const { data: pData, error: pError } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("company_id", profile.company_id)
-        .neq("is_deleted", true)
-        .order("created_at", { ascending: false });
+      const { data: { session: __session_1 } } = await supabase.auth.getSession();
+      const pRes = await fetch(`/api/finance/payments?company_id=${profile.company_id}`, {
+        headers: { 'Authorization': `Bearer ${__session_1?.access_token}` }
+      });
+      const pData = pRes.ok ? await pRes.json() : [];
 
-      if (pError) throw pError;
-
-      // Fetch pending export orders (unpaid)
-      const { data: eData, error: eError } = await supabase
-        .from("export_orders")
-        .select("*")
-        .eq("company_id", profile.company_id)
-        .neq("is_deleted", true)
-        .eq("payment_status", "unpaid");
-
-      if (eError) throw eError;
+      const { data: { session: __session_2 } } = await supabase.auth.getSession();
+      const eRes = await fetch(`/api/finance/export_orders?company_id=${profile.company_id}&payment_status=unpaid`, {
+        headers: { 'Authorization': `Bearer ${__session_2?.access_token}` }
+      });
+      const eData = eRes.ok ? await eRes.json() : [];
 
       const formattedPayments = (pData || []).map(p => ({
         id: p.payment_number || p.id.split('-')[0].toUpperCase(),
@@ -84,13 +76,12 @@ export default function PaymentsRegister() {
     queryKey: ["unpaid_export_orders", profile?.company_id],
     queryFn: async () => {
       if (!profile?.company_id) return [];
-      const { data, error } = await supabase
-        .from("export_orders")
-        .select("id, order_number, customer_name, total_amount, currency")
-        .eq("company_id", profile.company_id)
-        .eq("payment_status", "unpaid");
-      if (error) throw error;
-      return data;
+      const { data: { session: __session_3 } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/finance/export_orders?company_id=${profile.company_id}&payment_status=unpaid`, {
+        headers: { 'Authorization': `Bearer ${__session_3?.access_token}` }
+      });
+      if (!res.ok) throw new Error("Fetch export orders failed");
+      return await res.json();
     },
     enabled: !!profile?.company_id && isDialogOpen
   });
@@ -105,26 +96,38 @@ export default function PaymentsRegister() {
     try {
       const payNum = `PAY-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`;
 
-      const { error } = await supabase.from("payments").insert({
-        company_id: profile?.company_id,
-        payment_number: payNum,
-        amount: Number(amount),
-        currency,
-        method,
-        status: 'Completed',
-        reference_number: ref,
-        received_at: new Date().toISOString(),
-        notes: partyName
+      const { data: { session: __session_4 } } = await supabase.auth.getSession();
+      const res = await fetch('/api/finance/payments', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${__session_4?.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          company_id: profile?.company_id,
+          payment_number: payNum,
+          payer_name: partyName,
+          amount: Number(amount),
+          currency,
+          method,
+          status: 'Completed',
+          reference_number: ref,
+          received_at: new Date().toISOString(),
+          created_by: profile?.id
+        })
       });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Insert payment failed");
 
-      // Update order payment status if linked
       if (orderId) {
-        await supabase
-          .from("export_orders")
-          .update({ payment_status: 'paid' })
-          .eq("id", orderId);
+        await fetch(`/api/finance/export_orders/${orderId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${__session_4?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ payment_status: 'paid' })
+        });
       }
 
       toast.success("Payment registered successfully");

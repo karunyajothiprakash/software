@@ -14,6 +14,7 @@ type Lead = {
   contact_name: string;
   country: string;
   interested_product: string;
+  product_type?: string | null;
   stage: string;
 };
 
@@ -30,21 +31,22 @@ const STAGES = [
 
 export default function LeadPipeline() {
   const { roleSlugs } = useAuth();
-  const isAdmin = roleSlugs.has("admin");
+  const canEditStage = ["admin", "manager", "bde"].some((r) => roleSlugs.has(r));
   const [leads, setLeads] = useState<Lead[]>([]);
 
   const [loading, setLoading] = useState(true);
 
   const fetchLeads = async () => {
     try {
-      const { data, error } = await supabase
-        .from("leads")
-        .select("id, company_name, contact_name, country, interested_product, stage")
-        .not('is_deleted', 'eq', true)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setLeads(data as Lead[]);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No active session");
+      const res = await fetch('/api/leads', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch pipeline data");
+      const data = await res.json();
+      const activeLeads = (data || []).filter((l: any) => !l.is_deleted);
+      setLeads(activeLeads as Lead[]);
     } catch (error: any) {
       toast.error(error.message || "Failed to fetch pipeline data");
     } finally {
@@ -77,12 +79,18 @@ export default function LeadPipeline() {
     setLeads(leads.map(lead => lead.id === id ? { ...lead, stage: newStage } : lead));
 
     try {
-      const { error } = await supabase
-        .from("leads")
-        .update({ stage: newStage })
-        .eq("id", id);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No active session");
+      const res = await fetch(`/api/leads/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ stage: newStage })
+      });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to update stage");
       toast.success("Stage updated");
     } catch (error: any) {
       toast.error(error.message || "Failed to update stage");
@@ -132,10 +140,10 @@ export default function LeadPipeline() {
                           <div className="text-sm text-muted-foreground space-y-1">
                             {lead.contact_name && <div>👤 {lead.contact_name}</div>}
                             {lead.country && <div>🌍 {lead.country}</div>}
-                            {lead.interested_product && <div>📦 {lead.interested_product}</div>}
+                            {(lead.interested_product || lead.product_type) && <div>📦 {lead.interested_product || lead.product_type}</div>}
                           </div>
                           
-                          {isAdmin ? (
+                          {canEditStage ? (
                             <Select
                               value={lead.stage}
                               onValueChange={(val) => updateLeadStage(lead.id, val)}

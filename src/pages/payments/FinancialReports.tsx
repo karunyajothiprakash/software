@@ -27,11 +27,11 @@ export default function FinancialReports() {
 
       if (isLive) {
         if (name === "Accounts Receivable Aging") {
-          const { data } = await supabase
-            .from("sales_orders")
-            .select("order_number, amount, currency, delivery_date, customer:customers(name)")
-            .neq("is_deleted", true)
-            .eq("status", "Pending");
+          const { data: { session: __session_5 } } = await supabase.auth.getSession();
+          const arRes = await fetch(`/api/finance/reports/ar_aging`, {
+            headers: { 'Authorization': `Bearer ${__session_5?.access_token}` }
+          });
+          const data = arRes.ok ? await arRes.json() : [];
           
           const formatted = (data || []).map(o => ({
             ref: o.order_number,
@@ -53,17 +53,19 @@ export default function FinancialReports() {
             ]
           });
         } else if (name === "Profit & Loss Statement") {
-          const { data: revenue } = await supabase
-            .from("payments")
-            .select("payment_number, amount, currency, received_at")
-            .neq("is_deleted", true)
-            .eq("status", "Completed");
+          const { data: { session: __session_6 } } = await supabase.auth.getSession();
+          const pRes = await fetch('/api/finance/payments?status=Completed', {
+            headers: { 'Authorization': `Bearer ${__session_6?.access_token}` }
+          });
+          const revenue = pRes.ok ? await pRes.json() : [];
 
-          const { data: expenses } = await supabase
-            .from("purchase_orders")
-            .select("po_number, total, currency, order_date")
-            .neq("is_deleted", true)
-            .in("status", ["approved", "received"]);
+          const poRes1 = await fetch('/api/finance/purchase_orders?status=approved', {
+            headers: { 'Authorization': `Bearer ${__session_6?.access_token}` }
+          });
+          const poRes2 = await fetch('/api/finance/purchase_orders?status=received', {
+            headers: { 'Authorization': `Bearer ${__session_6?.access_token}` }
+          });
+          const expenses = [...(poRes1.ok ? await poRes1.json() : []), ...(poRes2.ok ? await poRes2.json() : [])];
           
           const revFormatted = (revenue || []).map(p => ({
             ref: p.payment_number,
@@ -101,13 +103,20 @@ export default function FinancialReports() {
             ]
           });
         } else if (name === "Balance Sheet") {
-          // Fetch Assets
-          const { data: payments } = await supabase.from("payments").select("amount").neq("is_deleted", true).eq("status", "Completed");
-          const { data: inventory } = await supabase.from("inventory_batches").select("quantity_remaining_kg, cost_per_kg").neq("is_deleted", true);
-          const { data: receivables } = await supabase.from("sales_orders").select("amount").neq("is_deleted", true).eq("status", "Pending");
+          const { data: { session: __session_7 } } = await supabase.auth.getSession();
           
-          // Fetch Liabilities
-          const { data: payables } = await supabase.from("purchase_orders").select("total").neq("is_deleted", true).in("status", ["approved", "received"]);
+          const payRes = await fetch('/api/finance/payments?status=Completed', { headers: { 'Authorization': `Bearer ${__session_7?.access_token}` } });
+          const payments = payRes.ok ? await payRes.json() : [];
+          
+          const invRes = await fetch('/api/inventory/inventory_batches', { headers: { 'Authorization': `Bearer ${__session_7?.access_token}` } });
+          const inventory = invRes.ok ? await invRes.json() : [];
+          
+          const soRes = await fetch('/api/finance/sales_orders?status=Pending', { headers: { 'Authorization': `Bearer ${__session_7?.access_token}` } });
+          const receivables = soRes.ok ? await soRes.json() : [];
+          
+          const poRes1 = await fetch('/api/finance/purchase_orders?status=approved', { headers: { 'Authorization': `Bearer ${__session_7?.access_token}` } });
+          const poRes2 = await fetch('/api/finance/purchase_orders?status=received', { headers: { 'Authorization': `Bearer ${__session_7?.access_token}` } });
+          const payables = [...(poRes1.ok ? await poRes1.json() : []), ...(poRes2.ok ? await poRes2.json() : [])];
 
           const cashTotal = (payments || []).reduce((s, p) => s + Number(p.amount), 0);
           const inventoryVal = (inventory || []).reduce((s, i) => s + (Number(i.quantity_remaining_kg) * (Number(i.cost_per_kg) || 50)), 0); 
@@ -132,19 +141,11 @@ export default function FinancialReports() {
             ]
           });
         } else if (name === "Cash Flow Statement") {
-          // Cash Inflow: Completed payments
-          const { data: inflow } = await supabase
-            .from("payments")
-            .select("payment_number, amount, currency, received_at, customer:customers(name)")
-            .neq("is_deleted", true)
-            .eq("status", "Completed");
-          
-          // Cash Outflow: Approved/Received POs (assuming payment on receipt/approval for now)
-          const { data: outflow } = await supabase
-            .from("purchase_orders")
-            .select("po_number, total, currency, order_date, farmer:farmers(full_name)")
-            .neq("is_deleted", true)
-            .in("status", ["approved", "received"]);
+          const { data: { session: __session_8 } } = await supabase.auth.getSession();
+          const cfRes = await fetch(`/api/finance/reports/cash_flow`, {
+            headers: { 'Authorization': `Bearer ${__session_8?.access_token}` }
+          });
+          const { inflow = [], outflow = [] } = cfRes.ok ? await cfRes.json() : {};
 
           const cashIn = (inflow || []).map(i => ({
             ref: i.payment_number,

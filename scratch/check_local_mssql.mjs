@@ -29,7 +29,7 @@ async function run() {
         SELECT EmployeeCode, LogDateTime, Direction, DeviceId 
         FROM Attlogs 
         WHERE LogDateTime >= '2026-06-01 00:00:00'
-        ORDER BY LogDateTime ASC
+        ORDER BY LogDateTime DESC
       `);
       
     console.log("Punches in local MS SQL Attlogs for 2026-06-01:");

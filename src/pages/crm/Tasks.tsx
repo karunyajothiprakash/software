@@ -43,25 +43,13 @@ export default function Tasks() {
 
   const fetchTasks = async () => {
     try {
-      const { data, error } = await supabase
-        .from("crm_tasks")
-        .select(`
-          id, 
-          task_number, 
-          title, 
-          status, 
-          priority, 
-          due_date,
-          assigned_to,
-          lead_id,
-          profiles:assigned_to (full_name, email),
-          leads:lead_id (company_name)
-        `)
-        .eq("company_id", profile?.company_id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      if (data) setTasks(data);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/crm-tasks?company_id=${profile?.company_id || ''}`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch tasks");
+      const data = await res.json();
+      setTasks(data);
     } catch (err: any) {
       toast.error("Error loading tasks: " + err.message);
     }
@@ -74,12 +62,17 @@ export default function Tasks() {
       // Optimistic update
       setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
       
-      const { error } = await supabase
-        .from("crm_tasks")
-        .update({ status: newStatus })
-        .eq("id", id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/crm-tasks/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
         
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to update status");
     } catch (err: any) {
       toast.error("Failed to update status");
       fetchTasks(); // Revert on failure
@@ -89,10 +82,12 @@ export default function Tasks() {
   const deleteTask = async (id: string) => {
     if (!confirm("Are you sure you want to delete this task?")) return;
     try {
-      await softDeleteRecord("crm_tasks", id, {
-        resourceType: "crm_task",
-        resourceName: `Task ${id}`,
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/crm-tasks/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
       });
+      if (!res.ok) throw new Error("Failed to archive task");
       setTasks(prev => prev.filter((task) => task.id !== id));
       toast.success("Task archived (soft delete)");
     } catch (err: any) {

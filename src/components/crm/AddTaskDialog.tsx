@@ -36,21 +36,33 @@ export function AddTaskDialog({ open, onOpenChange, onSuccess }: AddTaskDialogPr
   }, [open, profile]);
 
   const fetchBdes = async () => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("company_id", profile?.company_id);
-    if (data) setBdes(data);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/employees?company_id=${profile?.company_id || ''}`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBdes(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const fetchLeads = async () => {
-    const { data } = await supabase
-      .from("leads")
-      .select("id, company_name")
-      .or(`company_id.eq.${profile?.company_id},company_id.is.null`)
-      .not('is_deleted', 'eq', true)
-      .order("created_at", { ascending: false });
-    if (data) setLeads(data);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/leads`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLeads(data.filter((l: any) => !l.is_deleted));
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -59,17 +71,25 @@ export function AddTaskDialog({ open, onOpenChange, onSuccess }: AddTaskDialogPr
     
     setLoading(true);
     try {
-      const { error } = await supabase.from("crm_tasks").insert({
-        title,
-        priority,
-        status,
-        due_date: dueDate ? new Date(dueDate).toISOString() : null,
-        assigned_to: assignedTo || null,
-        lead_id: leadId || null,
-        company_id: profile?.company_id
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/crm-tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
+          title,
+          priority,
+          status,
+          due_date: dueDate ? new Date(dueDate).toISOString() : null,
+          assigned_to: assignedTo && assignedTo !== "unassigned" ? assignedTo : null,
+          lead_id: leadId && leadId !== "none" ? leadId : null,
+          company_id: profile?.company_id
+        })
       });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to create task");
       
       toast.success("Task created successfully");
       onSuccess();

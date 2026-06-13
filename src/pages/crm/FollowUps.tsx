@@ -87,14 +87,14 @@ export default function FollowUps() {
 
   const fetchLeads = async () => {
     try {
-      const { data, error } = await supabase
-        .from("leads" as any)
-        .select("id, company_name, contact_name, business_category, product_type, country, mobile, email, website")
-        .neq('is_deleted', true)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setLeads(data as LeadOption[]);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/leads', {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch leads");
+      
+      const data = await res.json();
+      setLeads(data.filter((l: any) => !l.is_deleted) as LeadOption[]);
     } catch (error: any) {
       toast.error(error.message || "Failed to fetch leads");
     }

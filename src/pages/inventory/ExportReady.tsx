@@ -109,7 +109,14 @@ export default function ExportReady() {
           .eq("id", payload.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("export_ready_inventory").insert([
+        const { data: { session: __session_ins } } = await supabase.auth.getSession();
+        const __res_ins = await fetch(`/api/inventory/export_ready_inventory`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${__session_ins?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify([
           {
             product_id: payload.product_id,
             warehouse_id: payload.warehouse_id,
@@ -120,7 +127,9 @@ export default function ExportReady() {
             status: payload.status,
             notes: payload.notes,
           },
-        ]);
+        ])
+        });
+        const error = __res_ins.ok ? null : new Error('Insert failed');
         if (error) throw error;
       }
     },

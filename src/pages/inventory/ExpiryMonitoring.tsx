@@ -93,7 +93,14 @@ export default function ExpiryMonitoring() {
           .eq("id", payload.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("expiry_monitoring").insert([
+        const { data: { session: __session_ins } } = await supabase.auth.getSession();
+        const __res_ins = await fetch(`/api/inventory/expiry_monitoring`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${__session_ins?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify([
           {
             product_name: payload.product_name,
             batch_number: payload.batch_number,
@@ -105,7 +112,9 @@ export default function ExpiryMonitoring() {
             status: payload.status,
             notes: payload.notes,
           },
-        ]);
+        ])
+        });
+        const error = __res_ins.ok ? null : new Error('Insert failed');
         if (error) throw error;
       }
     },

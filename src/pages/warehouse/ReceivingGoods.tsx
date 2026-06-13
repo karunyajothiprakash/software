@@ -70,11 +70,19 @@ export default function ReceivingGoods() {
         queryKey: ["warehouse-locations", profile?.company_id],
         enabled: true,
         queryFn: async () => {
-            let query = supabase.from('warehouses').select('id, name').neq('is_deleted', true).order('name', { ascending: true });
-            if (profile?.company_id) query = query.eq('company_id', profile.company_id);
-            const { data, error } = await query;
-            if (error) throw error;
-            return data || [];
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                const res = await fetch('/api/warehouse/warehouses', {
+                    headers: { 'Authorization': `Bearer ${session?.access_token}` }
+                });
+                if (!res.ok) throw new Error('Failed to fetch warehouses');
+                const data = await res.json();
+                const filtered = (data || []).filter((w: any) => !w.is_deleted && (!profile?.company_id || w.company_id === profile.company_id));
+                return filtered;
+            } catch (err: any) {
+                console.error("Error fetching warehouses:", err);
+                return [];
+            }
         }
     });
 
@@ -208,22 +216,31 @@ export default function ReceivingGoods() {
                 const status = formData.qualityStatus === 'pass' ? 'qc_passed' : 'pending_qc';
                 const isExportReady = formData.qualityStatus === 'pass';
 
-                const { error: insertError } = await supabase.from("inventory_batches").insert({
-                    company_id,
-                    lot_number: formData.batchNumber,
-                    product_id: formData.productId,
-                    warehouse_id: formData.warehouseId,
-                    quantity_kg: quantityValue,
-                    quantity_remaining_kg: quantityValue,
-                    status,
-                    is_export_ready: isExportReady,
-                    received_date: formData.entryDate,
-                    notes: formData.notes || null
+                const { data: { session: currentSession } } = await supabase.auth.getSession();
+                const res = await fetch('/api/inventory/inventory_batches', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentSession?.access_token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        company_id,
+                        lot_number: formData.batchNumber,
+                        product_id: formData.productId,
+                        warehouse_id: formData.warehouseId,
+                        quantity_kg: quantityValue,
+                        quantity_remaining_kg: quantityValue,
+                        status,
+                        is_export_ready: isExportReady,
+                        received_date: formData.entryDate,
+                        notes: formData.notes || null
+                    })
                 });
 
-                if (insertError) {
-                    console.error("Database insert error:", insertError);
-                    throw insertError;
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    console.error("Database insert error:", errData);
+                    throw new Error(errData.error || "Failed to insert inventory batch");
                 }
 
                 // Update warehouse stock summary if the table exists
