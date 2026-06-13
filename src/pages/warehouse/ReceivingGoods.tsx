@@ -160,6 +160,13 @@ export default function ReceivingGoods() {
                     supplierInfo: stringValue ? formatSupplierInfo(supplier) : "",
                 };
             }
+            if (field === "supplierInfo") {
+                return {
+                    ...prev,
+                    supplierId: "",
+                    supplierInfo: value,
+                };
+            }
             if (field === "productId" || field === "warehouseId") {
                 return { ...prev, [field]: stringValue };
             }
@@ -527,15 +534,11 @@ export default function ReceivingGoods() {
                                                 <SelectValue placeholder={productsLoading ? "Loading products..." : "Select product"} />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {uniqueProducts.length > 0 ? uniqueProducts.map((product: any) => (
-                                                    <SelectItem key={product.id} value={product.id}>
-                                                        {product.name} {product.grade ? `- ${product.grade}` : ''}
-                                                    </SelectItem>
-                                                )) : COMPANY_PRODUCT_NAMES.map((productName, idx) => (
-                                                    <SelectItem key={`fallback-${idx}`} value={`fallback-${idx}`}>
-                                                        {productName}
-                                                    </SelectItem>
-                                                ))}
+                                                {uniqueProducts.map((product: any) => (
+                                            <SelectItem key={product.id} value={product.id}>
+                                                {product.name} {product.grade ? `- ${product.grade}` : ''}
+                                            </SelectItem>
+                                        ))}
                                             </SelectContent>
                                         </Select>
                                         <p className="text-xs text-muted-foreground">Select the product batch being received.</p>
