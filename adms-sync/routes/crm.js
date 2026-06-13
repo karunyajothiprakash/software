@@ -69,6 +69,25 @@ router.put('/:id', requireAuth, async (req, res) => {
     const keys = Object.keys(updates);
     if (keys.length === 0) return res.json({ success: true });
     
+    if (updates.stage === 'Won' || updates.stage === 'Client Successfully Acquired') {
+      // Automatically convert to customer if not already converted
+      const leadCheck = await db.query('SELECT company_id, company_name, country, email FROM leads WHERE id = $1', [id]);
+      if (leadCheck.rows.length > 0) {
+        const leadData = leadCheck.rows[0];
+        // Ensure company_id is present, default to 1 if not
+        const cmpId = leadData.company_id || 1;
+        // Check if already in customers to avoid duplicates
+        const custCheck = await db.query('SELECT id FROM customers WHERE email = $1 AND name = $2', [leadData.email, leadData.company_name]);
+        if (custCheck.rows.length === 0) {
+          await db.query(
+            `INSERT INTO customers (company_id, name, country, email) VALUES ($1, $2, $3, $4)`,
+            [cmpId, leadData.company_name, leadData.country, leadData.email]
+          );
+        }
+      }
+      updates.stage = 'Client Successfully Acquired';
+    }
+
     const setClause = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
     const values = [id, ...Object.values(updates)];
     
@@ -114,20 +133,12 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
       'INSERT INTO customers (company_id, name, country, email) VALUES ($1, $2, $3, $4)',
       [company_id, name, country, email]
     );
-<<<<<<< HEAD
-
     await db.query(
       `UPDATE leads SET stage = 'Client Successfully Acquired' WHERE id = $1 AND stage != 'Client Successfully Acquired'`,
-      [req.params.id]
+      [id]
     );
 
     await db.query('COMMIT');
-=======
-    
-    // Update lead stage
-    await db.query('UPDATE leads SET stage = $1 WHERE id = $2', ['Won', id]);
-    
->>>>>>> 1ae57c8 (Apply conditional auth fix for Tasks page and stage other changes)
     res.json({ success: true });
   } catch (err) {
     console.error("DB Error (convert lead):", err);
