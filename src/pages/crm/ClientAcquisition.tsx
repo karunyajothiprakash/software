@@ -124,23 +124,25 @@ export default function ClientAcquisition() {
       .order('channel_name');
 
     if (allChannels && leads) {
-      let tLeads = 0;
-      let tClients = 0;
-      let tRevenue = 0;
+      const isClient = (stage: string) => {
+        if (!stage) return false;
+        const s = stage.toLowerCase();
+        return ['won', 'client', 'converted'].some(keyword => s.includes(keyword));
+      };
+
+      const tLeads = leads.length;
+      const tClients = leads.filter(l => isClient(l.stage)).length;
+      const tRevenue = tClients * 12000;
 
       const processed = allChannels.map(ch => {
         const chLeads = leads.filter(l => l.source_id === ch.id);
-        const chClients = chLeads.filter(l => l.stage && ['Won', 'Closed Won', 'Deal Won', 'Client', 'Converted'].some(s => l.stage.toLowerCase().includes(s.toLowerCase())));
+        const chClients = chLeads.filter(l => isClient(l.stage));
 
         const leadsCount = chLeads.length;
         const clientsCount = chClients.length;
         const rate = leadsCount > 0 ? ((clientsCount / leadsCount) * 100).toFixed(1) + "%" : "0.0%";
 
         const revenue = clientsCount * 12000;
-
-        tLeads += leadsCount;
-        tClients += clientsCount;
-        tRevenue += revenue;
 
         return {
           id: ch.id,
@@ -152,6 +154,26 @@ export default function ClientAcquisition() {
           value: `$${revenue.toLocaleString()}`
         };
       });
+
+      // Add "Direct / Unknown" row for leads without a source
+      const unknownLeads = leads.filter(l => !l.source_id);
+      if (unknownLeads.length > 0) {
+        const unknownClients = unknownLeads.filter(l => isClient(l.stage));
+        const leadsCount = unknownLeads.length;
+        const clientsCount = unknownClients.length;
+        const rate = leadsCount > 0 ? ((clientsCount / leadsCount) * 100).toFixed(1) + "%" : "0.0%";
+        const revenue = clientsCount * 12000;
+        
+        processed.push({
+          id: 'unknown-source',
+          channel: 'Direct / Unknown',
+          leads: leadsCount,
+          clients: clientsCount,
+          cost: `$0.00`,
+          rate: rate,
+          value: `$${revenue.toLocaleString()}`
+        });
+      }
 
       setSources(processed);
       setTotalLeads(tLeads);
