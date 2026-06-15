@@ -90,7 +90,7 @@ router.post('/:table', requireAuth, async (req, res) => {
     res.status(201).json(Array.isArray(req.body) ? results : results[0]);
   } catch (err) {
     console.error(`Error POST ${table}:`, err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -112,7 +112,7 @@ router.put('/:table/:id', requireAuth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(`Error PUT ${table}:`, err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
