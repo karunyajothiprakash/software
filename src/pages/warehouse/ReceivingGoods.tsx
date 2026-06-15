@@ -299,7 +299,7 @@ export default function ReceivingGoods() {
                 }
 
                 const quantityValue = Number(formData.receivedQty) || 0;
-                const status = formData.qualityStatus === 'pass' ? 'qc_passed' : 'pending_qc';
+                const status = formData.qualityStatus === 'pass' ? 'approved' : 'pending_qc';
                 const isExportReady = formData.qualityStatus === 'pass';
 
                 const { data: { session: currentSession } } = await supabase.auth.getSession();
