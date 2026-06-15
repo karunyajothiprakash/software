@@ -121,10 +121,11 @@ export function AppSidebar({ open, onClose }: { open: boolean; onClose: () => vo
       }
 
       try {
-        const permsRes = await fetch(`/api/user-permissions?user_id=${currentUserId}`, {
+        const permsRes = await fetch(`/api/user-permissions?user_id=${currentUserId}&t=${Date.now()}`, {
           headers: {
             Authorization: `Bearer ${session?.access_token}`,
           },
+          cache: 'no-store'
         });
 
         if (!mounted) return;
@@ -158,7 +159,7 @@ export function AppSidebar({ open, onClose }: { open: boolean; onClose: () => vo
       if (mounted) {
         fetchPerms();
       }
-    }, 30000);
+    }, 5000);
 
     return () => {
       mounted = false;
