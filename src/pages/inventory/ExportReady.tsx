@@ -54,17 +54,26 @@ export default function ExportReady() {
   const { data: inventory = [], isLoading: isInventoryLoading } = useQuery({
     queryKey: ["export-ready-inventory"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("export_ready_inventory")
-        .neq("is_deleted", true)
-        .select(`
-          *,
-          products(name, grade),
-          warehouses(name)
-        `)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch('/api/inventory/export_ready_inventory', {
+          headers: { 'Authorization': `Bearer ${session?.access_token}` }
+        });
+        if (!res.ok) throw new Error('Failed to fetch export ready inventory');
+        const rows = await res.json();
+        const { data: prods } = await supabase.from('products').select('id, name, grade');
+        const { data: whs } = await supabase.from('warehouses').select('id, name');
+        const prodMap = Object.fromEntries((prods || []).map((p: any) => [p.id, p]));
+        const whMap = Object.fromEntries((whs || []).map((w: any) => [w.id, w]));
+        return (rows || []).filter((r: any) => !r.is_deleted).map((r: any) => ({
+          ...r,
+          products: r.product_id ? prodMap[r.product_id] : null,
+          warehouses: r.warehouse_id ? whMap[r.warehouse_id] : null,
+        }));
+      } catch (err) {
+        console.error('Error fetching export ready inventory:', err);
+        return [];
+      }
     },
   });
 
@@ -92,45 +101,35 @@ export default function ExportReady() {
 
   const mutation = useMutation({
     mutationFn: async (payload: any) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const body = {
+        product_id: payload.product_id,
+        warehouse_id: payload.warehouse_id,
+        export_ready_quantity: payload.export_ready_quantity,
+        certificate_number: payload.certificate_number,
+        clearance_date: payload.clearance_date,
+        destination_country: payload.destination_country || null,
+        status: payload.status || 'pending_clearance',
+        notes: payload.notes || null,
+        company_id: profile?.company_id || null,
+        updated_at: new Date().toISOString(),
+      };
       if (payload.id) {
-        const { error } = await supabase
-          .from("export_ready_inventory")
-          .update({
-            product_id: payload.product_id,
-            warehouse_id: payload.warehouse_id,
-            export_ready_quantity: payload.export_ready_quantity,
-            certificate_number: payload.certificate_number,
-            clearance_date: payload.clearance_date,
-            destination_country: payload.destination_country,
-            status: payload.status,
-            notes: payload.notes,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", payload.id);
-        if (error) throw error;
-      } else {
-        const { data: { session: __session_ins } } = await supabase.auth.getSession();
-        const __res_ins = await fetch(`/api/inventory/export_ready_inventory`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${__session_ins?.access_token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify([
-          {
-            product_id: payload.product_id,
-            warehouse_id: payload.warehouse_id,
-            export_ready_quantity: payload.export_ready_quantity,
-            certificate_number: payload.certificate_number,
-            clearance_date: payload.clearance_date,
-            destination_country: payload.destination_country,
-            status: payload.status,
-            notes: payload.notes,
-          },
-        ])
+        // UPDATE via VPS API
+        const res = await fetch(`/api/inventory/export_ready_inventory/${payload.id}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
         });
-        const error = __res_ins.ok ? null : new Error('Insert failed');
-        if (error) throw error;
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Update failed'); }
+      } else {
+        // INSERT via VPS API
+        const res = await fetch('/api/inventory/export_ready_inventory', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify([body])
+        });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Insert failed'); }
       }
     },
     onSuccess: () => {
@@ -145,11 +144,13 @@ export default function ExportReady() {
 
   const actionMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase
-        .from("export_ready_inventory")
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq("id", id);
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/inventory/export_ready_inventory/${id}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, updated_at: new Date().toISOString() })
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to update record'); }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["export-ready-inventory"] });
@@ -238,12 +239,18 @@ export default function ExportReady() {
       actionMutation.mutate({ id: confirmTargetId, status: "shipped" });
     } else {
       try {
-        const { error } = await supabase.from("export_ready_inventory").update({
-          is_deleted: true,
-          deleted_at: new Date().toISOString(),
-          deleted_by: profile?.id || null,
-        }).eq("id", confirmTargetId);
-        if (error) throw error;
+        const { data: { session } } = await supabase.auth.getSession();
+        // Soft delete via VPS API
+        const res = await fetch(`/api/inventory/export_ready_inventory/${confirmTargetId}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+            deleted_by: profile?.id || null,
+          })
+        });
+        if (!res.ok) throw new Error('Failed to delete record');
         queryClient.invalidateQueries({ queryKey: ["export-ready-inventory"] });
         toast.success("Record hidden successfully.");
         setIsConfirmOpen(false);
