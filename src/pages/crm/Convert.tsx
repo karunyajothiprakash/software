@@ -10,14 +10,23 @@ export default function CrmConvert() {
   const { data: conversions, isLoading } = useQuery({
     queryKey: ["crm-conversions"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("leads")
-        .select("*")
-        .in("stage", ["Won", "Client Successfully Acquired"])
-        .order("updated_at", { ascending: false });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No active session");
+      const res = await fetch('/api/leads', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch leads");
+      const data = await res.json();
       
-      if (error) throw error;
-      return data || [];
+      const converted = (data || []).filter((lead: any) => 
+        ["won", "client successfully acquired"].includes(lead.stage?.toLowerCase())
+      );
+      
+      return converted.sort((a: any, b: any) => {
+        const dateA = new Date(a.updated_at || a.created_at || 0).getTime();
+        const dateB = new Date(b.updated_at || b.created_at || 0).getTime();
+        return dateB - dateA;
+      });
     },
   });
 
@@ -62,8 +71,8 @@ export default function CrmConvert() {
                 <TableRow key={conversion.id} className="hover:bg-muted/30 transition-colors">
                   <TableCell className="font-mono text-xs">
                     <div className="flex items-center gap-2">
-                      <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                      {format(new Date(conversion.updated_at), "dd MMM yyyy")}
+                       <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                       {format(new Date(conversion.updated_at || conversion.created_at || Date.now()), "dd MMM yyyy")}
                     </div>
                   </TableCell>
                   <TableCell className="font-bold">{conversion.company_name}</TableCell>

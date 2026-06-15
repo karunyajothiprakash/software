@@ -141,12 +141,12 @@ export default function LeadsList() {
   const filteredLeads = leads.filter((lead) => {
     const query = searchQuery.toLowerCase();
     const matchesSearch =
-      lead.company_name?.toLowerCase().includes(query) ||
-      lead.country?.toLowerCase().includes(query) ||
-      lead.product_type?.toLowerCase().includes(query) ||
-      lead.assigned_to?.toLowerCase().includes(query) ||
-      lead.business_category?.toLowerCase().includes(query) ||
-      lead.mobile?.toLowerCase().includes(query);
+      (lead.company_name || "").toLowerCase().includes(query) ||
+      (lead.country || "").toLowerCase().includes(query) ||
+      (lead.product_type || "").toLowerCase().includes(query) ||
+      (lead.assigned_to || "").toLowerCase().includes(query) ||
+      (lead.business_category || "").toLowerCase().includes(query) ||
+      (lead.mobile || "").toLowerCase().includes(query);
 
     const matchesCountry =
       selectedCountry === "All Countries" ||
@@ -838,7 +838,7 @@ export default function LeadsList() {
         <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/40 border border-border">
           <button
             onClick={() => setLeadsTab("open")}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${leadsTab === "open"
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${leadsTab === "open"
               ? "bg-emerald-600 text-white shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
               }`}
@@ -849,7 +849,7 @@ export default function LeadsList() {
           </button>
           <button
             onClick={() => setLeadsTab("closed")}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${leadsTab === "closed"
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-semibold transition-all cursor-pointer ${leadsTab === "closed"
               ? "bg-slate-600 text-white shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
               }`}
