@@ -83,21 +83,38 @@ export default function AvailableStock() {
   });
 
   const { data: stockData = [], isLoading } = useQuery({
-    queryKey: ['available-stock'],
+    queryKey: ['available-stock', products.length, warehouses.length],
+    enabled: products.length > 0 && warehouses.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('inventory_batches')
-        .select(`
-          *,
-          products(id, name, grade, category),
-          warehouses(id, name)
-        `)
-        .neq('is_deleted', true)
-        .gt('available_quantity', 0)
-        .order('available_quantity', { ascending: true });
-
-      if (error) throw error;
-      return (data || []) as any[];
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/inventory/available_stock`, {
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch available stock');
+      const rows = await res.json();
+      
+      return rows.map((item: any) => {
+        const prod = products.find((p: any) => p.name === item.product_name);
+        const wh = warehouses.find((w: any) => w.name === item.warehouse);
+        return {
+          ...item,
+          product_id: prod?.id || "",
+          warehouse_id: wh?.id || "",
+          available_quantity: Number(item.available_quantity) || 0,
+          minimum_stock_level: Number(item.minimum_level) || 0,
+          products: {
+            name: item.product_name,
+            category: prod?.category || "",
+            grade: prod?.grade || ""
+          },
+          warehouses: {
+            name: item.warehouse
+          },
+          updated_at: item.last_updated || item.created_at
+        };
+      });
     }
   });
 
@@ -210,30 +227,41 @@ export default function AvailableStock() {
   // Mutations
   const saveStockMutation = useMutation({
     mutationFn: async (data: any) => {
+      const prod = products.find((p: any) => p.id === data.product_id);
+      const wh = warehouses.find((w: any) => w.id === data.warehouse_id);
+      
+      const payload = {
+        product_name: prod?.name || "",
+        warehouse: wh?.name || "",
+        available_quantity: Number(data.available_quantity),
+        minimum_level: Number(data.minimum_stock_level),
+        notes: data.notes || "",
+        unit: prod?.unit || "kg",
+        last_updated: new Date().toISOString().slice(0, 10)
+      };
+
+      const { data: { session } } = await supabase.auth.getSession();
+
       if (selectedStock?.id) {
-        const { data: { session: __session_upd } } = await supabase.auth.getSession();
-        const __res_upd = await fetch(`/api/inventory/inventory_batches/${selectedStock.id}`, {
+        const __res_upd = await fetch(`/api/inventory/available_stock/${selectedStock.id}`, {
           method: 'PUT',
           headers: {
-            'Authorization': `Bearer ${__session_upd?.access_token}`,
+            'Authorization': `Bearer ${session?.access_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(data)
+          body: JSON.stringify(payload)
         });
-        const error = __res_upd.ok ? null : new Error('Update failed');
-        if (error) throw error;
+        if (!__res_upd.ok) throw new Error('Update failed');
       } else {
-        const { data: { session: __session_ins } } = await supabase.auth.getSession();
-        const __res_ins = await fetch(`/api/inventory/inventory_batches`, {
+        const __res_ins = await fetch(`/api/inventory/available_stock`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${__session_ins?.access_token}`,
+            'Authorization': `Bearer ${session?.access_token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify([data])
+          body: JSON.stringify([payload])
         });
-        const error = __res_ins.ok ? null : new Error('Insert failed');
-        if (error) throw error;
+        if (!__res_ins.ok) throw new Error('Insert failed');
       }
     },
     onSuccess: () => {
@@ -251,18 +279,21 @@ export default function AvailableStock() {
       const adj = Number(adjustForm.quantity) || 0;
       const newQty = adjustForm.type === 'add' ? current + adj : current - adj;
 
-      if (newQty < 0) throw new Error("Quantity cannot be completely negative.");
+      if (newQty < 0) throw new Error("Quantity cannot be negative.");
 
-      // First update stock
-      const { error } = await supabase
-        .from('inventory_batches')
-        .update({ available_quantity: newQty, updated_at: new Date().toISOString() })
-        .eq('id', selectedStock.id);
-
-      if (error) throw error;
-
-      // Ideally insert into an inventory_movements table here to keep history
-      // e.g. await supabase.from('inventory_movements').insert({...})
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/inventory/available_stock/${selectedStock.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          available_quantity: newQty,
+          last_updated: new Date().toISOString().slice(0, 10)
+        })
+      });
+      if (!res.ok) throw new Error('Adjustment failed');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['available-stock'] });
