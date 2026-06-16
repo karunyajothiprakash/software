@@ -15,6 +15,9 @@ export default function AppLayout() {
   // Initialize global realtime sync (handles React Query invalidation)
   useRealtimeSync();
 
+  // Hide chat panel on Packing Management page to avoid blocking clicks
+  const isPackingPage = location.pathname.startsWith('/warehouse/packing');
+
   return (
     <CRMSecurityProvider>
       <div className="min-h-screen flex w-full bg-background relative">
@@ -25,7 +28,7 @@ export default function AppLayout() {
             <Outlet />
           </main>
         </div>
-        <TeamChatPanel />
+        {!isPackingPage && <TeamChatPanel />}
       </div>
     </CRMSecurityProvider>
   );
