@@ -65,6 +65,10 @@ export function TeamChatPanel() {
     currentUserRef.current = currentUser;
   }, [currentUser]);
 
+  // Hide chat panel on Packing Management page to avoid overlay blocking
+  const isPackingPage = typeof window !== 'undefined' && window.location.pathname?.startsWith('/warehouse/packing');
+  if (isPackingPage) return null;
+
   // Draggable logic for floating bubble
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
