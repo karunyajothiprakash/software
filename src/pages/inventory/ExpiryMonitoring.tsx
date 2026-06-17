@@ -79,6 +79,17 @@ export default function ExpiryMonitoring() {
     }
   });
 
+  const uniqueProducts = useMemo(() => {
+    const seen = new Map<string, any>();
+    for (const p of products) {
+      const key = (p.name || '').toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.set(key, p);
+      }
+    }
+    return Array.from(seen.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [products]);
+
   const mutation = useMutation({
     mutationFn: async (payload: any) => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -160,7 +171,10 @@ export default function ExpiryMonitoring() {
 
       const productMatch = item.product_name?.toLowerCase().includes(query) || false;
       const batchMatch = item.batch_number?.toLowerCase().includes(query) || false;
-      const statusMatch = statusFilter === "all" || computedStatus === statusFilter;
+      const statusMatch =
+        statusFilter === "all" ||
+        item.status === statusFilter ||
+        computedStatus === statusFilter;
 
       let dateMatch = true;
       if (startDate || endDate) {
@@ -337,7 +351,7 @@ export default function ExpiryMonitoring() {
             </Select>
           </div>
 
-          <div className="grid gap-3 md:gap-4 md:grid-cols-2">
+          <div className="grid gap-3 md:gap-4 md:grid-cols-3 items-end">
             <div className="space-y-2">
               <Label className="text-xs">Expiry From</Label>
               <Input
@@ -354,6 +368,18 @@ export default function ExpiryMonitoring() {
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearchTerm("");
+                setStatusFilter("all");
+                setStartDate("");
+                setEndDate("");
+              }}
+              className="w-full"
+            >
+              Reset Filters
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -451,10 +477,10 @@ export default function ExpiryMonitoring() {
                     <SelectValue placeholder="Select Product" />
                   </SelectTrigger>
                   <SelectContent>
-                    {products.length === 0 ? (
+                    {uniqueProducts.length === 0 ? (
                       <div className="p-2 text-sm text-muted-foreground">No products available</div>
                     ) : (
-                      products.map((p: any) => (
+                      uniqueProducts.map((p: any) => (
                         <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
                       ))
                     )}

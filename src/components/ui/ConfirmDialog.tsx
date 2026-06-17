@@ -7,9 +7,11 @@ interface ConfirmDialogProps {
   title: string;
   description: string;
   onConfirm: () => void;
-  onCancel: () => void;
+  onCancel?: () => void;
+  onOpenChange?: (open: boolean) => void;
   confirmLabel?: string;
   confirmVariant?: "destructive" | "default";
+  isLoading?: boolean;
 }
 
 export function ConfirmDialog({
@@ -18,11 +20,22 @@ export function ConfirmDialog({
   description,
   onConfirm,
   onCancel,
+  onOpenChange,
   confirmLabel = "Delete",
-  confirmVariant = "destructive"
+  confirmVariant = "destructive",
+  isLoading = false
 }: ConfirmDialogProps) {
+  
+  const handleCancel = () => {
+    if (onCancel) onCancel();
+    if (onOpenChange) onOpenChange(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      if (!isOpen) handleCancel();
+      else if (onOpenChange) onOpenChange(isOpen);
+    }}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader className="flex flex-col gap-2">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100/10">
@@ -34,11 +47,11 @@ export function ConfirmDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex gap-2 sm:justify-center mt-4">
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" onClick={handleCancel} disabled={isLoading}>
             Cancel
           </Button>
-          <Button variant={confirmVariant} onClick={onConfirm}>
-            {confirmLabel}
+          <Button variant={confirmVariant} onClick={onConfirm} disabled={isLoading}>
+            {isLoading ? "Loading..." : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

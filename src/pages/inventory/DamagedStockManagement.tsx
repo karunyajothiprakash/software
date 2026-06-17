@@ -87,6 +87,17 @@ export default function DamagedStockManagement() {
     }
   });
 
+  const uniqueProducts = useMemo(() => {
+    const seen = new Map<string, any>();
+    for (const p of products) {
+      const key = (p.name || '').toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.set(key, p);
+      }
+    }
+    return Array.from(seen.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [products]);
+
   const mutation = useMutation({
     mutationFn: async (payload: any) => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -414,10 +425,10 @@ export default function DamagedStockManagement() {
                     <SelectValue placeholder="Select Product" />
                   </SelectTrigger>
                   <SelectContent>
-                    {products.length === 0 ? (
+                    {uniqueProducts.length === 0 ? (
                       <div className="p-2 text-sm text-muted-foreground">No products available</div>
                     ) : (
-                      products.map((p: any) => (
+                      uniqueProducts.map((p: any) => (
                         <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
                       ))
                     )}

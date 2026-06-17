@@ -21,7 +21,12 @@ export default function ExportReadyStockReport() {
   const { data: warehouses } = useQuery({
     queryKey: ["warehouses"],
     queryFn: async () => {
-      const { data } = await supabase.from("warehouses").select("id, name");
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/inventory/warehouses', {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch warehouses');
+      const data = await res.json();
       return data || [];
     }
   });

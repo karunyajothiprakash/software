@@ -317,6 +317,42 @@ export default function ReceivingGoods() {
                 const status = formData.qualityStatus === 'pass' ? 'approved' : 'pending_qc';
                 const isExportReady = formData.qualityStatus === 'pass';
 
+                // If the selected product is a fallback (not in DB), create it first
+                let resolvedProductId = formData.productId;
+                if (resolvedProductId.startsWith('fallback-product-')) {
+                    const fallbackProduct = uniqueProducts.find((p: any) => p.id === resolvedProductId);
+                    if (!fallbackProduct) {
+                        toast.error("Selected product not found. Please re-select.");
+                        setIsSubmitting(false);
+                        return;
+                    }
+                    const { data: { session: currentSession } } = await supabase.auth.getSession();
+                    const createRes = await fetch('/api/inventory/products', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${currentSession?.access_token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            name: fallbackProduct.name,
+                            unit: fallbackProduct.unit || 'kg',
+                            is_active: true,
+                            company_id,
+                        })
+                    });
+                    
+                    if (!createRes.ok) {
+                        console.error("Failed to auto-create product:", await createRes.text());
+                        toast.error(`Failed to create product "${fallbackProduct.name}". Please add it manually in Products first.`);
+                        setIsSubmitting(false);
+                        return;
+                    }
+                    const newProduct = await createRes.json();
+                    resolvedProductId = newProduct.id;
+                    toast.info(`Auto-created product "${fallbackProduct.name}" in your catalog.`);
+                    queryClient.invalidateQueries({ queryKey: ["warehouse-products"] });
+                }
+
                 const { data: { session: currentSession } } = await supabase.auth.getSession();
                 const res = await fetch('/api/inventory/inventory_batches', {
                     method: 'POST',
@@ -327,7 +363,7 @@ export default function ReceivingGoods() {
                     body: JSON.stringify({
                         company_id,
                         lot_number: formData.batchNumber,
-                        product_id: formData.productId,
+                        product_id: resolvedProductId,
                         warehouse_id: formData.warehouseId,
                         quantity_kg: quantityValue,
                         quantity_remaining_kg: quantityValue,

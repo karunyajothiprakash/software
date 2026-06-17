@@ -469,11 +469,11 @@ const { Client } = require('pg');
 
 async function startPgListener() {
   const pgClient = new Client({
-    user: 'erp_admin',
+    user: process.env.PG_USER || 'erp_admin',
     host: process.env.PG_HOST || '127.0.0.1',
-    database: 'shastika_erp',
+    database: process.env.PG_DATABASE || 'shastika_erp',
     password: process.env.PG_PASSWORD,
-    port: 5432,
+    port: parseInt(process.env.PG_PORT || '5432', 10),
   });
 
   pgClient.on('error', (err) => {

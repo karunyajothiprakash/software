@@ -61,6 +61,7 @@ export default function AvailableStock() {
   // Modals state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   // Selected items
   const [selectedStock, setSelectedStock] = useState<any>(null);
@@ -105,21 +106,21 @@ export default function AvailableStock() {
     queryKey: ['warehouses-list', profile?.company_id],
     enabled: !!profile?.company_id,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('warehouses')
-        .select('id, name')
-        .eq('company_id', profile?.company_id)
-        .eq('is_active', true)
-        .neq('is_deleted', true)
-        .order('name');
-      if (error) throw error;
-      return data || [];
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/inventory/warehouses', {
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch warehouses');
+      const data = await res.json();
+      return (data || []).filter((w: any) => w.is_active && !w.is_deleted && (!profile?.company_id || w.company_id === profile.company_id));
     }
   });
 
   const { data: stockData = [], isLoading } = useQuery({
     queryKey: ['available-stock', products.length, warehouses.length],
-    enabled: products.length > 0 && warehouses.length > 0,
+    enabled: true,
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`/api/inventory/available_stock`, {
@@ -131,8 +132,12 @@ export default function AvailableStock() {
       const rows = await res.json();
       
       return rows.map((item: any) => {
-        const prod = products.find((p: any) => p.name === item.product_name);
-        const wh = warehouses.find((w: any) => w.name === item.warehouse);
+        const prod = products.find(
+          (p: any) => p.name?.trim().toLowerCase() === item.product_name?.trim().toLowerCase()
+        );
+        const wh = warehouses.find(
+          (w: any) => w.name?.trim().toLowerCase() === item.warehouse?.trim().toLowerCase()
+        );
         return {
           ...item,
           product_id: prod?.id || "",
@@ -150,6 +155,28 @@ export default function AvailableStock() {
           updated_at: item.last_updated || item.created_at
         };
       });
+    }
+  });
+
+  const { data: historyLogs = [], isLoading: isHistoryLoading } = useQuery({
+    queryKey: ['stock-history', selectedStock?.id],
+    enabled: !!selectedStock && isHistoryModalOpen,
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/inventory/inventory_movements`, {
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch history');
+      const allRows = await res.json();
+      
+      // Filter by the selected product's SKU or Name and Warehouse
+      const sku = selectedStock?.products?.name || selectedStock?.product_name || '';
+      const warehouse = selectedStock?.warehouses?.name || selectedStock?.warehouse || '';
+      
+      return allRows.filter((row: any) => row.sku === sku && row.warehouse === warehouse)
+                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
   });
 
@@ -224,6 +251,17 @@ export default function AvailableStock() {
   const productOptions = products.length > 0 ? products : defaultProducts;
   const uniqueProducts = Array.from(new Set(productOptions.map((p: any) => p.name).filter(Boolean))).sort();
 
+  const uniqueProductObjects = useMemo(() => {
+    const seen = new Map<string, any>();
+    for (const p of products) {
+      const key = (p.name || '').toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.set(key, p);
+      }
+    }
+    return Array.from(seen.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [products]);
+
   // Mutations
   const saveStockMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -294,6 +332,26 @@ export default function AvailableStock() {
         })
       });
       if (!res.ok) throw new Error('Adjustment failed');
+
+      // Also log to inventory_movements
+      const prodName = selectedStock?.products?.name || selectedStock?.product_name || "Unknown";
+      const whName = selectedStock?.warehouses?.name || selectedStock?.warehouse || "Unknown";
+      const moveRes = await fetch(`/api/inventory/inventory_movements`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify([{
+          qty: adj,
+          date: new Date().toISOString(),
+          warehouse: whName,
+          direction: adjustForm.type === 'add' ? 'in' : 'out',
+          sku: prodName, // using product name as tracking key here
+          reference: adjustForm.reason
+        }])
+      });
+      if (!moveRes.ok) console.warn("Failed to log inventory movement.");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['available-stock'] });
@@ -324,6 +382,11 @@ export default function AvailableStock() {
     setSelectedStock(item);
     setAdjustForm({ type: "add", quantity: 0, reason: "Purchase received", notes: "" });
     setIsAdjustModalOpen(true);
+  };
+
+  const handleOpenHistory = (item: any) => {
+    setSelectedStock(item);
+    setIsHistoryModalOpen(true);
   };
 
   const handleExportCSV = () => {
@@ -494,7 +557,7 @@ export default function AvailableStock() {
                           <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(item)} title="Edit Configuration">
                             <Edit2 className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="View History (WIP)">
+                          <Button variant="ghost" size="icon" onClick={() => handleOpenHistory(item)} title="View History">
                             <History className="h-4 w-4 text-muted-foreground" />
                           </Button>
                         </div>
@@ -535,10 +598,10 @@ export default function AvailableStock() {
               >
                 <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
                 <SelectContent>
-                  {products.length === 0 ? (
+                  {uniqueProductObjects.length === 0 ? (
                     <div className="p-3 text-sm text-muted-foreground">No products found. Run the seed script or add products first.</div>
                   ) : (
-                    products.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
+                    uniqueProductObjects.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
                   )}
                 </SelectContent>
               </Select>
@@ -665,6 +728,58 @@ export default function AvailableStock() {
             <Button onClick={() => adjustStockMutation.mutate(adjustForm as any)} disabled={adjustStockMutation.isPending}>
               {adjustStockMutation.isPending ? "Confirming..." : "Confirm Adjustment"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* History Modal */}
+      <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Stock Adjustment History</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto py-4">
+            <div className="mb-4">
+              <span className="font-semibold">{selectedStock?.products?.name || selectedStock?.product_name}</span> at <span className="font-semibold">{selectedStock?.warehouses?.name || selectedStock?.warehouse}</span>
+            </div>
+            
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead>Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isHistoryLoading ? (
+                  <TableRow><TableCell colSpan={4} className="text-center py-4">Loading history...</TableCell></TableRow>
+                ) : historyLogs.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center py-4 text-muted-foreground">No adjustments recorded yet.</TableCell></TableRow>
+                ) : (
+                  historyLogs.map((log: any) => (
+                    <TableRow key={log.id}>
+                      <TableCell>{format(new Date(log.date), "MMM d, yyyy HH:mm")}</TableCell>
+                      <TableCell>
+                        {log.direction === 'in' ? (
+                          <Badge className="bg-green-50 text-green-700 border-none">Added</Badge>
+                        ) : (
+                          <Badge className="bg-red-50 text-red-700 border-none">Removed</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {log.direction === 'in' ? '+' : '-'}{log.qty} {selectedStock?.unit || 'kg'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{log.reference || '-'}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHistoryModalOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

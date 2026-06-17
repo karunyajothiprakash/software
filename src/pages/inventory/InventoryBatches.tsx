@@ -163,6 +163,17 @@ export default function InventoryBatches() {
     };
   }, [batches]);
 
+  const uniqueProducts = useMemo(() => {
+    const seen = new Map<string, any>();
+    for (const p of products) {
+      const key = (p.name || '').toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.set(key, p);
+      }
+    }
+    return Array.from(seen.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [products]);
+
   // Filter batches
   const filteredBatches = useMemo(() => {
     let result = batches;
@@ -471,7 +482,7 @@ export default function InventoryBatches() {
                         <SelectValue placeholder="Select..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {products.map((p) => (
+                        {uniqueProducts.map((p) => (
                           <SelectItem key={p.id} value={p.id}>
                             {p.name}
                           </SelectItem>
@@ -702,7 +713,7 @@ export default function InventoryBatches() {
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {products.map((p) => (
+                    {uniqueProducts.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {p.name}
                       </SelectItem>

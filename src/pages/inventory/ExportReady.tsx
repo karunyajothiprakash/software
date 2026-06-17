@@ -94,13 +94,13 @@ export default function ExportReady() {
   const { data: warehouses = [] } = useQuery({
     queryKey: ["warehouses"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("warehouses")
-        .select("*")
-        .neq("is_deleted", true)
-        .order("name", { ascending: true });
-      if (error) throw error;
-      return data || [];
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/inventory/warehouses', {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch warehouses');
+      const data = await res.json();
+      return (data || []).filter((w: any) => !w.is_deleted).sort((a: any, b: any) => a.name.localeCompare(b.name));
     },
   });
 

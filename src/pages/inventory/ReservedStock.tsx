@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { cn } from "@/lib/utils";
-import { Search, Plus, Download, Edit2, CheckCircle2, XCircle, Eye, Loader2 } from "lucide-react";
+import { Search, Plus, Download, Edit2, CheckCircle2, XCircle, Eye, Loader2, Trash2 } from "lucide-react";
 import { format, isBefore, parseISO } from "date-fns";
 
 const initialFormState = {
@@ -93,13 +93,13 @@ export default function ReservedStock() {
   const { data: warehouses = [] } = useQuery({
     queryKey: ["warehouses"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("warehouses")
-        .select("*")
-        .neq("is_deleted", true)
-        .order("name", { ascending: true });
-      if (error) throw error;
-      return data || [];
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/inventory/warehouses', {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch warehouses');
+      const data = await res.json();
+      return (data || []).filter((w: any) => w.is_active && !w.is_deleted).sort((a: any, b: any) => a.name.localeCompare(b.name));
     },
   });
 
@@ -174,17 +174,29 @@ export default function ReservedStock() {
   const actionMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`/api/inventory/reserved_stock/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status, updated_at: new Date().toISOString() })
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to update reservation');
+      
+      if (status === "delete") {
+        const res = await fetch(`/api/inventory/reserved_stock/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${session?.access_token}` }
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to delete reservation');
+        }
+      } else {
+        const res = await fetch(`/api/inventory/reserved_stock/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status, updated_at: new Date().toISOString() })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to update reservation');
+        }
       }
     },
     onSuccess: () => {
@@ -206,12 +218,55 @@ export default function ReservedStock() {
           reservation.status === "active" &&
           reservation.expected_release_date &&
           isBefore(parseISO(reservation.expected_release_date), today);
+
+        // Resolve warehouse name and ID
+        let resolvedWarehouseId = reservation.warehouse_id;
+        let resolvedWarehouseName = reservation.warehouse_name || reservation.warehouses?.name;
+
+        if (!resolvedWarehouseId && resolvedWarehouseName) {
+          const wh = warehouses.find(
+            (w: any) => w.name?.trim().toLowerCase() === resolvedWarehouseName?.trim().toLowerCase()
+          );
+          if (wh) resolvedWarehouseId = wh.id;
+        } else if (resolvedWarehouseId && !resolvedWarehouseName) {
+          const wh = warehouses.find((w: any) => w.id === resolvedWarehouseId);
+          if (wh) resolvedWarehouseName = wh.name;
+        }
+
+        // Resolve product name, grade, and ID
+        let resolvedProductId = reservation.product_id;
+        let resolvedProductName = reservation.product_name || reservation.products?.name;
+        let resolvedProductGrade = reservation.grade || reservation.products?.grade;
+
+        if (!resolvedProductId && resolvedProductName) {
+          const prod = products.find(
+            (p: any) => p.name?.trim().toLowerCase() === resolvedProductName?.trim().toLowerCase()
+          );
+          if (prod) {
+            resolvedProductId = prod.id;
+            if (!resolvedProductGrade) resolvedProductGrade = prod.grade;
+          }
+        } else if (resolvedProductId && !resolvedProductName) {
+          const prod = products.find((p: any) => p.id === resolvedProductId);
+          if (prod) {
+            resolvedProductName = prod.name;
+            if (!resolvedProductGrade) resolvedProductGrade = prod.grade;
+          }
+        }
+
         return {
           ...reservation,
+          warehouse_id: resolvedWarehouseId,
+          warehouse_name: resolvedWarehouseName,
+          product_id: resolvedProductId,
+          product_name: resolvedProductName,
+          grade: resolvedProductGrade,
+          products: { name: resolvedProductName, grade: resolvedProductGrade },
+          warehouses: { name: resolvedWarehouseName },
           displayStatus: isOverdue ? "overdue" : reservation.status || "active",
         };
       }),
-    [reservations, today]
+    [reservations, warehouses, products, today]
   );
 
   const filteredReservations = useMemo(() => {
@@ -516,10 +571,22 @@ export default function ReservedStock() {
                       >
                         <XCircle className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" asChild>
-                        <a href={`/orders/${reservation.order_reference || "#"}`} target="_blank" rel="noreferrer">
-                          <Eye className="h-4 w-4" />
-                        </a>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => window.open(`/orders/${reservation.order_reference || "#"}`, "_blank")}
+                        title="View Order Details"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => startConfirm("delete", reservation.id)}
+                        title="Delete Record"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -653,11 +720,18 @@ export default function ReservedStock() {
       <ConfirmDialog
         open={isConfirmOpen}
         onOpenChange={setIsConfirmOpen}
-        title={confirmAction === "release" ? "Release Reserved Stock" : "Cancel Reservation"}
+        title={
+          confirmAction === "release" ? "Release Reserved Stock" : 
+          confirmAction === "delete" ? "Delete Reservation" : 
+          "Cancel Reservation"
+        }
         description={
           confirmAction === "release"
             ? "Release this reserved stock and mark the reservation as released."
-            : "Cancel this reservation and free the reserved stock."}
+            : confirmAction === "delete"
+            ? "Permanently delete this reservation record. This cannot be undone."
+            : "Cancel this reservation and free the reserved stock."
+        }
         onConfirm={confirmActionHandler}
         isLoading={actionMutation.isLoading}
       />
