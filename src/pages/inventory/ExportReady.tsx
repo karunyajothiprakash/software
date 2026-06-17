@@ -61,14 +61,11 @@ export default function ExportReady() {
         });
         if (!res.ok) throw new Error('Failed to fetch export ready inventory');
         const rows = await res.json();
-        const { data: prods } = await supabase.from('products').select('id, name, grade');
-        const { data: whs } = await supabase.from('warehouses').select('id, name');
-        const prodMap = Object.fromEntries((prods || []).map((p: any) => [p.id, p]));
-        const whMap = Object.fromEntries((whs || []).map((w: any) => [w.id, w]));
+        // VPS table uses product_name/grade/warehouse_name as text fields directly
         return (rows || []).filter((r: any) => !r.is_deleted).map((r: any) => ({
           ...r,
-          products: r.product_id ? prodMap[r.product_id] : null,
-          warehouses: r.warehouse_id ? whMap[r.warehouse_id] : null,
+          products: { name: r.product_name || null, grade: r.grade || null },
+          warehouses: { name: r.warehouse_name || null },
         }));
       } catch (err) {
         console.error('Error fetching export ready inventory:', err);
@@ -82,7 +79,15 @@ export default function ExportReady() {
     queryFn: async () => {
       const { data, error } = await supabase.from('products').select('*').eq('is_active', true).order('name');
       if (error) throw error;
-      return data || [];
+      // Deduplicate products by name only
+      const seen = new Map<string, any>();
+      for (const product of (data || [])) {
+        const key = (product.name || '').toLowerCase().trim();
+        if (!seen.has(key)) {
+          seen.set(key, product);
+        }
+      }
+      return Array.from(seen.values());
     }
   });
 
@@ -103,8 +108,9 @@ export default function ExportReady() {
     mutationFn: async (payload: any) => {
       const { data: { session } } = await supabase.auth.getSession();
       const body = {
-        product_id: payload.product_id,
-        warehouse_id: payload.warehouse_id,
+        product_name: payload.product_name,
+        grade: payload.grade || null,
+        warehouse_name: payload.warehouse_name,
         export_ready_quantity: payload.export_ready_quantity,
         certificate_number: payload.certificate_number,
         clearance_date: payload.clearance_date,
@@ -221,8 +227,15 @@ export default function ExportReady() {
       return;
     }
 
+    // Resolve product/warehouse UUIDs to names for the VPS table
+    const selectedProduct = products.find((p: any) => p.id === formState.product_id);
+    const selectedWarehouse = warehouses.find((w: any) => w.id === formState.warehouse_id);
+
     mutation.mutate({
       ...formState,
+      product_name: selectedProduct?.name || "",
+      grade: selectedProduct?.grade || null,
+      warehouse_name: selectedWarehouse?.name || "",
       export_ready_quantity: Number(formState.export_ready_quantity),
     });
   };
