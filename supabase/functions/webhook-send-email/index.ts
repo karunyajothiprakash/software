@@ -142,6 +142,7 @@ Deno.serve(async (req) => {
 
     // 3.5 Intercept company logo and make it an inline attachment
     const processedAttachments: any[] = [];
+    const inlineAttachments: any[] = [];
     const logoUrl = "https://sxebygxpjzntogzpjnga.supabase.co/storage/v1/object/public/chat-attachments/company-logo-1779776670741.png";
     
     if (finalHtml && finalHtml.includes(logoUrl)) {
@@ -149,7 +150,7 @@ Deno.serve(async (req) => {
         const logoRes = await fetch(logoUrl);
         if (logoRes.ok) {
           const logoData = await logoRes.arrayBuffer();
-          const uploadUrl = `https://mail.${apiDomain}/api/accounts/${zohoId}/messages/attachments?fileName=company_logo.png`;
+          const uploadUrl = `https://mail.${apiDomain}/api/accounts/${zohoId}/messages/attachments?fileName=company_logo.png&isInline=true`;
           const uploadRes = await fetch(uploadUrl, {
             method: "POST",
             headers: {
@@ -161,19 +162,26 @@ Deno.serve(async (req) => {
           const uploadResult = await uploadRes.json();
           if (uploadRes.ok && uploadResult.data) {
              const attachmentData = Array.isArray(uploadResult.data) ? uploadResult.data[0] : uploadResult.data;
-             processedAttachments.push({
+             const cid = attachmentData.storeName || "company_logo.png";
+             inlineAttachments.push({
                storeName: attachmentData.storeName,
                attachmentPath: attachmentData.attachmentPath,
-               attachmentName: "company_logo.png"
+               attachmentName: "company_logo.png",
+               isInline: true,
+               cid: cid,
              });
-             finalHtml = finalHtml.split(logoUrl).join("cid:company_logo.png");
-             console.log("Successfully intercepted and inlined company logo.");
+             // Replace logo URL with CID reference using storeName
+             finalHtml = finalHtml.split(logoUrl).join(`cid:${cid}`);
+             console.log("Successfully intercepted and inlined company logo with CID:", cid);
           } else {
              console.error("Zoho Logo Upload Failed: " + JSON.stringify(uploadResult));
+             // Fallback: keep the original public URL so logo still shows
+             console.log("Logo will be served from public URL as fallback.");
           }
         }
       } catch (err) {
         console.error("Failed to inline logo:", err);
+        // Fallback: keep the original public URL
       }
     }
 
@@ -238,8 +246,14 @@ Deno.serve(async (req) => {
     if (cc) mailData.ccAddress = cleanEmail(cc);
     if (bcc) mailData.bccAddress = cleanEmail(bcc);
 
-    if (processedAttachments.length > 0) {
-      mailData.attachments = processedAttachments;
+    const allAttachments = [...processedAttachments, ...inlineAttachments];
+    if (allAttachments.length > 0) {
+      mailData.attachments = allAttachments;
+    }
+
+    // Log inline attachments for debugging
+    if (inlineAttachments.length > 0) {
+      console.log("Inline attachments (logo):", inlineAttachments.map(a => ({ name: a.attachmentName, cid: a.cid, storeName: a.storeName })));
     }
 
     console.log("Sending email:", {

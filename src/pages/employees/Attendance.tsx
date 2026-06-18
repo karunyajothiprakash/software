@@ -637,13 +637,12 @@ export default function Attendance() {
     }
     const profErr = null;
 
-    // Exclude owners and users without a biometric ID
+    // Exclude owners
     const filtered = (profiles || []).filter(p =>
-      !p.full_name?.toLowerCase().includes("lakshmana gokul") &&
-      !!p.biometric_id
+      !p.full_name?.toLowerCase().includes("lakshmana gokul")
     );
 
-    // Deduplicate by full_name — prefer entry with a biometric_id
+    // Deduplicate by full_name — prefer entry with a biometric_id if one exists
     const seen = new Map<string, any>();
     filtered.forEach(p => {
       const key = (p.full_name || '').trim().toLowerCase();

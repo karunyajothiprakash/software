@@ -32,6 +32,12 @@ import {
 const COMPANY_LOGO_URL =
   "https://sxebygxpjzntogzpjnga.supabase.co/storage/v1/object/public/chat-attachments/company-logo-1779776670741.png";
 
+const decodeHtml = (html: string) => {
+  const txt = document.createElement("textarea");
+  txt.innerHTML = html || "";
+  return txt.value;
+};
+
 // ─── Signature generator — matches the screenshot layout exactly ─────────────
 const getDefaultSignature = (profile: any) => {
   if (!profile) return "";
@@ -273,17 +279,30 @@ export default function Mailbox() {
     }
     setIsComposing(false);
 
-    if ((!email.body_html || !email.body_html.includes("<div")) && email.zoho_message_id) {
+    if ((!email.body_html || !email.body_html.includes("<div") || email.body_html.includes("ImageDisplay")) && email.zoho_message_id) {
       setLoadingBody(true);
       try {
-        const { data } = await supabase.functions.invoke("get-zoho-email-body", {
-          body: {
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch("/api/emails/get-zoho-body", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token}`
+          },
+          body: JSON.stringify({
             accountId: email.account_id,
             messageId: email.zoho_message_id,
             emailId: email.id,
             folderName: email.folder
-          }
+          })
         });
+        let data;
+        try {
+          data = await response.json();
+        } catch (e) {
+          data = { error: "Invalid JSON response from server" };
+        }
+        if (!response.ok) throw new Error(data?.error || `HTTP error! status: ${response.status}`);
         if (data?.success && data.content) {
           setSelectedEmail((prev: any) =>
             prev?.id === email.id
@@ -297,9 +316,12 @@ export default function Mailbox() {
                 : e
             )
           );
+        } else {
+          toast.error("Failed to load full email content: " + (data?.error || "Unknown error"));
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch full email body", err);
+        toast.error("Network error fetching email: " + err.message);
       } finally {
         setLoadingBody(false);
       }
@@ -310,14 +332,27 @@ export default function Mailbox() {
     if (!email.zoho_message_id) return;
     setLoadingBody(true);
     try {
-      const { data } = await supabase.functions.invoke("get-zoho-email-body", {
-        body: {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch("/api/emails/get-zoho-body", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
           accountId: email.account_id,
           messageId: email.zoho_message_id,
           emailId: email.id,
           folderName: email.folder
-        }
+        })
       });
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        data = { error: "Invalid JSON response from server" };
+      }
+      if (!response.ok) throw new Error(data?.error || `HTTP error! status: ${response.status}`);
       if (data?.success && data.content) {
         if (data.debug) console.log("Zoho API Attachment Debug Info:", data.debug);
         setSelectedEmail((prev: any) =>
@@ -340,9 +375,9 @@ export default function Mailbox() {
       } else {
         toast.error("Failed to load message details: " + (data?.error || "Unknown error"));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch full email body", err);
-      toast.error("Error communicating with server.");
+      toast.error("Error communicating with server: " + err.message);
     } finally {
       setLoadingBody(false);
     }
@@ -409,23 +444,25 @@ export default function Mailbox() {
     if (isManual) setIsManualSyncing(true);
     setIsSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("sync-zoho-emails", {
-        body: { accountId }
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/emails/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ accountId })
       });
-      if (error) {
-        console.error("Sync error:", error);
-        if (isManual) toast.error(`Sync error: ${error.message}`);
-        return;
-      }
-      if (data?.success === false) {
-        console.error("Sync failed:", data.error);
-        if (isManual) toast.error(`Sync failed: ${data.error}`);
+      const data = await response.json();
+      if (!response.ok || data?.success === false) {
+        console.error('Sync failed:', data?.error);
+        if (isManual) toast.error(`Sync failed: ${data?.error || 'Unknown error'}`);
         return;
       }
       await fetchHistory(accountId);
       if (isManual) toast.success(`Synced ${data?.syncCount || 0} messages!`);
     } catch (err: any) {
-      console.error("Unexpected sync error:", err);
+      console.error('Unexpected sync error:', err);
       if (isManual) toast.error(`Unexpected sync error: ${err.message}`);
     } finally {
       setIsSyncing(false);
@@ -974,202 +1011,180 @@ export default function Mailbox() {
               </div>
 
             ) : selectedEmail ? (
-              /* ── Email Detail View ── */
-              <div className="p-8 max-w-5xl mx-auto w-full">
-                <div className="mb-8 flex items-start justify-between bg-gray-100/20 p-6 rounded-2xl border border-gray-300">
-                  <div className="flex-1">
-                    <h1 className="text-xl font-medium mb-6 text-gray-900 flex items-center gap-3">
-                      {(() => { const t = document.createElement("textarea"); t.innerHTML = selectedEmail.subject || "(No Subject)"; return t.value; })()}
-                      <Badge variant="outline" className="font-semibold text-[9px] uppercase border-amber-600/30 text-amber-700 bg-amber-100/50 px-2 py-0.5 rounded-full">
-                        {selectedEmail.folder || "Inbox"}
-                      </Badge>
-                    </h1>
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-black font-semibold text-base shadow-md">
-                        {(selectedEmail.from_address || "?").charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="font-bold text-sm text-gray-800">
-                          {selectedEmail.from_address.split("<")[0].trim() || selectedEmail.from_address}
-                          <span className="text-xs text-gray-600 font-normal ml-2">
-                            {selectedEmail.from_address.includes("<") ? `<${selectedEmail.from_address.split("<")[1]}` : ""}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-600 mt-0.5 flex flex-col gap-0.5">
-                          <div><span className="font-medium text-gray-400">To:</span> {selectedEmail.to_address}</div>
-                          {selectedEmail.cc_address && <div><span className="font-medium text-gray-400">CC:</span>  {selectedEmail.cc_address}</div>}
-                          {selectedEmail.bcc_address && <div><span className="font-medium text-gray-400">BCC:</span> {selectedEmail.bcc_address}</div>}
-                        </div>
+              /* ── Email Detail View — Professional Full-Height ── */
+              <div className="flex flex-col h-full min-h-0">
+
+                {/* ── Sticky Email Header ── */}
+                <div className="shrink-0 border-b border-gray-200 bg-white px-8 py-5">
+                  {/* Subject row */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1 min-w-0 pr-6">
+                      <h1 className="text-2xl font-bold text-gray-900 leading-tight truncate">
+                        {decodeHtml(selectedEmail.subject || "(No Subject)")}
+                      </h1>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <Badge variant="outline" className="font-semibold text-[10px] uppercase border-amber-600/40 text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full tracking-wide">
+                          {selectedEmail.folder || "Inbox"}
+                        </Badge>
+                        {!selectedEmail.is_read && (
+                          <Badge className="text-[10px] font-bold bg-blue-500 text-white px-2.5 py-0.5 rounded-full">Unread</Badge>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <div className="text-xs text-gray-600 flex items-center gap-4 pt-2">
-                    {format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => handleForceFetchEmail(selectedEmail)} title="Reload Message from Server" className="h-8 w-8 rounded-full text-amber-600 hover:text-amber-700 hover:bg-gray-200/50">
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" title="Reload from Zoho" onClick={() => handleForceFetchEmail(selectedEmail)} className="h-9 w-9 rounded-full text-amber-600 hover:bg-amber-50 hover:text-amber-700">
                         <RefreshCw className={`h-4 w-4 ${loadingBody ? "animate-spin" : ""}`} />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><Star className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><Reply className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/50"><MoreVertical className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-gray-500 hover:text-yellow-500 hover:bg-yellow-50"><Star className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100"><Reply className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100"><MoreVertical className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+
+                  {/* Sender row */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3.5">
+                      <div className="h-11 w-11 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white font-bold text-base shadow-md shrink-0">
+                        {((decodeHtml(selectedEmail.from_address) || "?").replace(/["']/g, "")).charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-bold text-sm text-gray-900">
+                            {decodeHtml(selectedEmail.from_address).split("<")[0].replace(/["']/g, "").trim() || decodeHtml(selectedEmail.from_address).replace(/["']/g, "")}
+                          </span>
+                          {decodeHtml(selectedEmail.from_address).includes("<") && (
+                            <span className="text-xs text-gray-500">{`<${decodeHtml(selectedEmail.from_address).split("<")[1]}`}</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          <span className="font-medium text-gray-400">To: </span>
+                          {decodeHtml(selectedEmail.to_address)}
+                          {selectedEmail.cc_address && <><span className="ml-2 font-medium text-gray-400">CC: </span>{decodeHtml(selectedEmail.cc_address)}</>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-400 font-medium shrink-0">
+                      {format(new Date(selectedEmail.received_at || selectedEmail.created_at), "EEE, MMM d, yyyy · h:mm a")}
                     </div>
                   </div>
                 </div>
 
-                {/* Email body */}
-                <div className="pt-2 pl-12 text-sm leading-relaxed text-gray-700 min-h-[300px] w-full overflow-x-auto">
-                  {loadingBody ? (
-                    <div className="flex flex-col items-center justify-center py-20 text-gray-500 space-y-4">
-                      <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
-                      <p className="text-xs font-semibold text-gray-600">Syncing message body from Zoho secure servers...</p>
-                    </div>
-                  ) : selectedEmail.body_html ? (
-                    <div
-                      ref={emailBodyRef}
-                      className="email-body-content bg-gray-100/40 p-8 rounded-2xl border border-gray-300 shadow-inner w-full overflow-x-auto"
-                      dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }}
-                    />
-                  ) : selectedEmail.body_text ? (
-                    <div className="font-sans whitespace-pre-wrap bg-gray-100/40 p-8 rounded-2xl border border-gray-300 shadow-inner text-gray-700 leading-relaxed w-full overflow-x-auto">
-                      {selectedEmail.body_text}
-                    </div>
-                  ) : (
-                    <span className="italic text-gray-500">No content available</span>
-                  )}
-                </div>
+                {/* ── Scrollable Email Body ── */}
+                <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-8">
+                  <div className="max-w-6xl mx-auto">
 
-                {/* Attachments */}
-                {selectedEmail.attachments && Array.isArray(selectedEmail.attachments) && selectedEmail.attachments.length > 0 && (
-                  <div className="mt-8 pl-12">
-                    <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-4">
-                      Attachments ({selectedEmail.attachments.length})
-                    </h3>
-                    <div className="flex flex-wrap gap-3">
-                      {selectedEmail.attachments.map((att: any, i: number) => {
-                        const fname = att.filename?.toLowerCase() || "";
-                        const hasNoExtension = !fname.includes(".");
-                        const isSpreadsheet = hasNoExtension || fname.endsWith(".xlsx") || fname.endsWith(".xls") || fname.endsWith(".csv") || fname.endsWith(".ods") || fname.endsWith(".tsv");
-                        const isDocument = fname.endsWith(".doc") || fname.endsWith(".docx") || fname.endsWith(".odt") || fname.endsWith(".rtf") || fname.endsWith(".txt") || fname.endsWith(".html");
-                        const isPresentation = fname.endsWith(".ppt") || fname.endsWith(".pptx") || fname.endsWith(".odp");
-                        const isPdf = fname.endsWith(".pdf");
-                        const isZohoSupported = isSpreadsheet || isDocument || isPresentation || isPdf;
+                    {/* Body content card */}
+                    {loadingBody ? (
+                      <div className="flex flex-col items-center justify-center py-32 text-gray-400 space-y-5 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                        <div className="relative">
+                          <div className="absolute inset-0 rounded-full bg-amber-500/10 blur-xl animate-pulse" />
+                          <Loader2 className="h-10 w-10 animate-spin text-amber-500 relative" />
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-sm text-gray-600">Loading message…</p>
+                          <p className="text-xs text-gray-400 mt-1">Syncing from Zoho secure servers</p>
+                        </div>
+                      </div>
+                    ) : selectedEmail.body_html ? (
+                      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                        <div
+                          ref={emailBodyRef}
+                          className="email-body-content px-14 py-12 w-full overflow-x-auto"
+                          style={{ fontSize: '16px', lineHeight: '1.9', color: '#1f2937' }}
+                          dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }}
+                        />
+                      </div>
+                    ) : selectedEmail.body_text ? (
+                      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 font-sans whitespace-pre-wrap text-gray-700 text-sm leading-relaxed overflow-x-auto">
+                        {selectedEmail.body_text}
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-10 text-center">
+                        <Mail className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-400 italic text-sm">No message content available.</p>
+                      </div>
+                    )}
 
-                        return (
-                          <div key={i} className="flex items-center justify-between gap-4 bg-gray-100/50 px-4 py-3 rounded-xl border border-gray-300 text-sm shadow-sm group hover:scale-[1.01] transition-all min-w-[280px]">
-                            <div className="flex items-center gap-3">
-                              {isSpreadsheet
-                                ? <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-                                : isPdf
-                                  ? <FileText className="h-5 w-5 text-rose-600" />
-                                  : <FileText className="h-5 w-5 text-gray-600" />}
-                              <div className="text-left">
-                                <div className="font-semibold text-gray-800 truncate max-w-[180px]" title={att.filename}>{att.filename}</div>
-                                <div className="text-[10px] text-gray-600 font-semibold uppercase mt-0.5">{att.contentType || "File"}</div>
+
+                  {/* ── Attachments ── */}
+                  {selectedEmail.attachments && Array.isArray(selectedEmail.attachments) && selectedEmail.attachments.length > 0 && (
+                    <div className="mt-6">
+                      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <Paperclip className="h-3.5 w-3.5" />
+                        Attachments ({selectedEmail.attachments.length})
+                      </h3>
+                      <div className="flex flex-wrap gap-3">
+                        {selectedEmail.attachments.map((att: any, i: number) => {
+                          const fname = att.filename?.toLowerCase() || "";
+                          const hasNoExtension = !fname.includes(".");
+                          const isSpreadsheet = hasNoExtension || fname.endsWith(".xlsx") || fname.endsWith(".xls") || fname.endsWith(".csv") || fname.endsWith(".ods") || fname.endsWith(".tsv");
+                          const isPdf = fname.endsWith(".pdf");
+                          const isZohoSupported = isSpreadsheet || fname.endsWith(".doc") || fname.endsWith(".docx") || fname.endsWith(".odt") || fname.endsWith(".ppt") || fname.endsWith(".pptx") || fname.endsWith(".odp") || isPdf;
+                          return (
+                            <div key={i} className="flex items-center justify-between gap-4 bg-white px-4 py-3 rounded-xl border border-gray-200 text-sm shadow-sm hover:border-amber-300 transition-colors min-w-[260px]">
+                              <div className="flex items-center gap-3">
+                                {isSpreadsheet ? <FileSpreadsheet className="h-5 w-5 text-emerald-600" /> : isPdf ? <FileText className="h-5 w-5 text-rose-600" /> : <FileText className="h-5 w-5 text-gray-500" />}
+                                <div>
+                                  <div className="font-semibold text-gray-800 truncate max-w-[150px]" title={att.filename}>{att.filename}</div>
+                                  <div className="text-[10px] text-gray-400 font-semibold uppercase mt-0.5">{att.contentType || "File"}</div>
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 border-l border-gray-300 pl-3">
-                              {canDownloadAttachments ? (
-                                <Button
-                                  size="icon" variant="ghost"
-                                  className="h-8 w-8 rounded-lg hover:bg-gray-200 text-gray-600 hover:text-gray-900"
-                                  onClick={async () => {
-                                    const { data, error } = await supabase.storage.from("email-attachments").createSignedUrl(att.path, 60);
-                                    if (error) {
-                                      toast.error("Failed to generate download link. Access restricted.");
-                                    } else if (data?.signedUrl) {
-                                      window.open(data.signedUrl, "_blank");
-                                    }
-                                  }}
-                                  title="Download Attachment"
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="icon" variant="ghost"
-                                  className="h-8 w-8 rounded-lg text-gray-400 hover:bg-gray-100 cursor-not-allowed"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toast.error("You are not allowed to download this attachment.");
-                                  }}
-                                  title="Download Restricted"
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                              )}
-                              {isZohoSupported && (
-                                canDownloadAttachments ? (
-                                  <Button
-                                    size="sm" variant="outline"
-                                    className="rounded-lg border-emerald-500 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900"
-                                    onClick={() => handleEditWithZoho(att, i)}
-                                    disabled={openingZohoIndex === i}
-                                    title={isSpreadsheet ? "Edit with Zoho Sheet" : "Edit with Zoho Writer"}
-                                  >
-                                    {openingZohoIndex === i
-                                      ? <Loader2 className="h-4 w-4 animate-spin text-emerald-600 mr-2" />
-                                      : <FileSpreadsheet className="h-4 w-4 mr-2" />}
-                                    <span>Edit with Zoho</span>
+                              <div className="flex items-center gap-1 border-l border-gray-100 pl-3">
+                                {canDownloadAttachments ? (
+                                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-gray-600 hover:bg-gray-100" title="Download"
+                                    onClick={async () => { const { data } = await supabase.storage.from("email-attachments").createSignedUrl(att.path, 60); if (data?.signedUrl) window.open(data.signedUrl, "_blank"); }}>
+                                    <Download className="h-4 w-4" />
                                   </Button>
                                 ) : (
-                                  <Button
-                                    size="sm" variant="outline"
-                                    className="rounded-lg border-gray-300 text-gray-400 hover:bg-gray-50 hover:text-gray-500 cursor-not-allowed"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toast.error("You are not allowed to edit this attachment.");
-                                    }}
-                                  >
-                                    <FileSpreadsheet className="h-4 w-4 mr-2" />
-                                    <span>Edit Restricted</span>
+                                  <Button size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-gray-300 cursor-not-allowed"
+                                    onClick={(e) => { e.stopPropagation(); toast.error("You are not allowed to download this attachment."); }}>
+                                    <Download className="h-4 w-4" />
                                   </Button>
-                                )
-                              )}
+                                )}
+                                {isZohoSupported && (
+                                  canDownloadAttachments ? (
+                                    <Button size="sm" variant="outline" className="rounded-lg border-emerald-400 text-emerald-700 hover:bg-emerald-50 text-xs"
+                                      onClick={() => handleEditWithZoho(att, i)} disabled={openingZohoIndex === i}>
+                                      {openingZohoIndex === i ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />}
+                                      Zoho
+                                    </Button>
+                                  ) : (
+                                    <Button size="sm" variant="outline" className="rounded-lg text-gray-300 cursor-not-allowed text-xs"
+                                      onClick={(e) => { e.stopPropagation(); toast.error("You are not allowed to edit this attachment."); }}>
+                                      <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />Restricted
+                                    </Button>
+                                  )
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>{/* end max-w-4xl */}
+              </div>{/* end scrollable body */}
 
-                {/* Reply / Forward bar */}
-                <div className="mt-12 pl-12 flex gap-3 border-t border-gray-300 pt-8 pb-12">
-                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"
-                    onClick={() => {
-                      setIsComposing(true);
-                      setTo(selectedEmail.from_address);
-                      setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`);
-                      setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
-                    }}>
-                    <Reply className="h-4 w-4 mr-2" /> Reply
-                  </Button>
+              {/* ── Sticky Reply Toolbar ── */}
+              <div className="shrink-0 border-t border-gray-200 bg-white px-8 py-4 flex items-center gap-3">
+                <Button variant="outline" className="rounded-full px-5 h-9 bg-white border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold gap-2"
+                  onClick={() => { setIsComposing(true); setTo(selectedEmail.from_address); setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`); setContent(`${signatureText}<br/><br/><div style="border-left:3px solid #e5e7eb;padding-left:12px;margin-top:10px;color:#9ca3af;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`); }}>
+                  <Reply className="h-4 w-4" /> Reply
+                </Button>
+                <Button variant="outline" className="rounded-full px-5 h-9 bg-white border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold gap-2"
+                  onClick={() => { setIsComposing(true); setTo(selectedEmail.from_address); setCc(selectedEmail.cc_address || ""); setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`); setContent(`${signatureText}<br/><br/><div style="border-left:3px solid #e5e7eb;padding-left:12px;margin-top:10px;color:#9ca3af;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`); }}>
+                  <Reply className="h-4 w-4" /> Reply All
+                </Button>
+                <Button variant="outline" className="rounded-full px-5 h-9 bg-white border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-semibold gap-2"
+                  onClick={() => { setIsComposing(true); setTo(""); setSubject(selectedEmail.subject?.startsWith("Fwd:") ? selectedEmail.subject : `Fwd: ${selectedEmail.subject || ""}`); setContent(`${signatureText}<br/><br/><div style="border-left:3px solid #e5e7eb;padding-left:12px;margin-top:10px;color:#9ca3af;">---------- Forwarded message ---------<br/>From: ${selectedEmail.from_address}<br/>Date: ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}<br/>Subject: ${selectedEmail.subject}<br/>To: ${selectedEmail.to_address}<br/><br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`); }}>
+                  <Forward className="h-4 w-4" /> Forward
+                </Button>
+                <Button variant="outline" onClick={() => handleForceFetchEmail(selectedEmail)} className="rounded-full px-5 h-9 ml-auto bg-white border-amber-300 text-amber-700 hover:bg-amber-50 text-sm font-semibold gap-2">
+                  <RefreshCw className={`h-4 w-4 ${loadingBody ? "animate-spin" : ""}`} /> Load Images
+                </Button>
+              </div>
 
-                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"
-                    onClick={() => {
-                      setIsComposing(true);
-                      setTo(selectedEmail.from_address);
-                      setCc(selectedEmail.cc_address || "");
-                      setSubject(selectedEmail.subject?.startsWith("Re:") ? selectedEmail.subject : `Re: ${selectedEmail.subject || ""}`);
-                      setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">On ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}, ${selectedEmail.from_address} wrote:<br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
-                    }}>
-                    <Reply className="h-4 w-4 mr-2" /> Reply All
-                  </Button>
-
-                  <Button variant="outline" className="rounded-full px-6 bg-white border-gray-300 hover:bg-gray-100 text-gray-800"
-                    onClick={() => {
-                      setIsComposing(true);
-                      setTo("");
-                      setSubject(selectedEmail.subject?.startsWith("Fwd:") ? selectedEmail.subject : `Fwd: ${selectedEmail.subject || ""}`);
-                      setContent(`${signatureText}<br/><br/><div style="border-left:2px solid #ccc;padding-left:10px;margin-top:10px;color:#666;">---------- Forwarded message ---------<br/>From: ${selectedEmail.from_address}<br/>Date: ${format(new Date(selectedEmail.received_at || selectedEmail.created_at), "MMM d, yyyy, h:mm a")}<br/>Subject: ${selectedEmail.subject}<br/>To: ${selectedEmail.to_address}<br/><br/>${selectedEmail.body_html || selectedEmail.body_text}</div>`);
-                    }}>
-                    <Forward className="h-4 w-4 mr-2" /> Forward
-                  </Button>
-
-                  <Button variant="outline" onClick={() => handleForceFetchEmail(selectedEmail)} className="rounded-full px-6 bg-white border-amber-300 text-amber-700 hover:bg-amber-100 ml-auto">
-                    <RefreshCw className={`h-4 w-4 mr-2 ${loadingBody ? "animate-spin" : ""}`} /> Load Missing Attachments
-                  </Button>
-                </div>
               </div>
 
             ) : (
@@ -1187,63 +1202,40 @@ export default function Mailbox() {
                       {searchQuery ? "No search results" : `Your ${activeFolder} is empty`}
                     </h3>
                     <p className="text-xs text-gray-600 mt-2 max-w-[280px] leading-relaxed font-medium">
-                      {searchQuery
-                        ? "We couldn't find any emails matching your keywords."
-                        : "All synchronized emails in this folder will appear here."}
+                      {searchQuery ? "We couldn't find any emails matching your keywords." : "All synchronized emails in this folder will appear here."}
                     </p>
                   </div>
                 ) : (
                   filteredEmails.map(email => {
-                    const txt = document.createElement("textarea");
-                    txt.innerHTML = email.subject || "(No Subject)";
-                    const subjectText = txt.value;
-
-                    let sender = email.from_address || "";
+                    const subjectText = decodeHtml(email.subject || "(No Subject)");
+                    let sender = decodeHtml(email.from_address || "");
                     if (sender.includes("<")) sender = sender.split("<")[0].trim() || sender;
-                    sender = sender.replace(/"/g, "");
-
+                    sender = sender.replace(/["']/g, "");
                     const liveStatus = emailStatuses[email.id] || email.status;
                     const isUnread = !email.is_read;
-
                     return (
-                      <div
-                        key={email.id}
-                        onClick={() => handleSelectEmail(email)}
-                        className={`group flex items-center px-6 py-3.5 hover:bg-gray-100 cursor-pointer transition-all border-b border-gray-200 relative ${isUnread ? "bg-amber-50" : "bg-white"}`}
-                      >
+                      <div key={email.id} onClick={() => handleSelectEmail(email)}
+                        className={`group flex items-center px-6 py-5 hover:bg-gray-100 cursor-pointer transition-all border-b border-gray-200 relative ${isUnread ? "bg-amber-50" : "bg-white"}`}>
                         {isUnread && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-amber-600 shadow-[0_0_8px_rgba(180,83,9,0.5)]" />}
-
-                        <div className="flex items-center gap-2 w-12 shrink-0 text-gray-600">
-                          <button
-                            onClick={e => e.stopPropagation()}
-                            className="h-8 w-8 rounded-full hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-amber-600 transition-colors"
-                          >
+                        <div className="flex items-center gap-2 w-12 shrink-0">
+                          <button onClick={e => e.stopPropagation()} className="h-8 w-8 rounded-full hover:bg-gray-200 flex items-center justify-center text-gray-500 hover:text-amber-600 transition-colors">
                             <Star className={`h-4 w-4 ${email.is_starred ? "fill-amber-600 text-amber-600" : ""}`} />
                           </button>
                         </div>
-
-                        <div className={`w-44 shrink-0 text-sm truncate pr-4 ${isUnread ? "font-bold text-gray-900" : "text-gray-600 font-medium"}`}>
-                          {sender}
-                        </div>
-
+                        <div className={`w-48 shrink-0 text-base truncate pr-4 ${isUnread ? "font-bold text-gray-900" : "text-gray-600 font-medium"}`}>{sender}</div>
                         <div className="flex-1 min-w-0 flex items-center text-sm">
-                          <span className={`truncate shrink-0 ${isUnread ? "font-bold text-gray-900" : "text-gray-700 font-medium"}`}>
-                            {subjectText}
-                          </span>
+                          <span className={`truncate shrink-0 text-base ${isUnread ? "font-bold text-gray-900" : "text-gray-700 font-medium"}`}>{subjectText}</span>
                           {email.attachments && Array.isArray(email.attachments) && email.attachments.length > 0 && (
-                            <Paperclip className="h-3 w-3 text-gray-600 shrink-0 ml-2" />
+                            <Paperclip className="h-3 w-3 text-gray-500 shrink-0 ml-2" />
                           )}
-                          <span className="text-gray-500 truncate ml-2 text-xs">
-                            — {email.body_text ? email.body_text.substring(0, 80) : "No preview available..."}
-                          </span>
+                          <span className="text-gray-500 truncate ml-2 text-sm">— {email.body_text ? email.body_text.substring(0, 80) : "No preview available..."}</span>
                         </div>
-
-                        <div className="w-36 shrink-0 text-right text-xs pl-4 flex items-center justify-end gap-2 text-gray-600 font-semibold">
+                        <div className="w-36 shrink-0 text-right text-xs pl-4 flex items-center justify-end gap-2 text-gray-500 font-semibold">
                           {liveStatus === "sending" && <span className="flex items-center gap-1 text-blue-600 font-bold"><Loader2 className="h-3 w-3 animate-spin" />Sending</span>}
                           {liveStatus === "pending" && <span className="flex items-center gap-1 text-amber-600 font-bold"><Clock className="h-3 w-3 animate-pulse" />Queued</span>}
                           {liveStatus === "sent" && <span className="text-emerald-600 font-bold text-sm">✓</span>}
                           {liveStatus === "failed" && <span className="text-rose-600 font-bold text-sm">✗</span>}
-                          <span className={`text-[11px] font-bold ${isUnread ? "text-amber-600" : "text-gray-600"}`}>
+                          <span className={`text-[11px] font-bold ${isUnread ? "text-amber-600" : "text-gray-500"}`}>
                             {format(new Date(email.received_at || email.created_at), "MMM d")}
                           </span>
                         </div>
@@ -1256,6 +1248,7 @@ export default function Mailbox() {
           </ScrollArea>
         </div>
       </div>
+
 
       {/* ── Mail Settings Modal ── */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>

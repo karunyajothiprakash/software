@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import {
   getAllFaceEmbeddings,
+  getAllEmployees,
   signOut,
 } from '../services/supabase';
 import {
@@ -148,13 +149,13 @@ function AttendanceRow({ record }) {
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {record.name || record.employee_id?.slice(0, 8)}
+          {record.name || record.full_name || record.employee_id?.slice(0, 8)}
         </div>
         <div style={{ fontSize: '11px', color: '#64748b' }}>{record.department || ''}</div>
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
         <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-          {fmt(record.check_in)}{record.check_out ? ` → ${fmt(record.check_out)}` : ''}
+          {fmt(record.clock_in || record.check_in)}{record.clock_out ? ` → ${fmt(record.clock_out)}` : ''}
         </div>
         <StatusChip status={record.status || 'absent'} />
       </div>
@@ -189,8 +190,8 @@ export default function FaceAttendance() {
   const isMounted = useRef(true);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const isCheckout = searchParams.get('mode') === 'checkout';
-const isCheckin = searchParams.get('mode') === 'checkin';
+  const [isCheckout, setIsCheckout] = useState(searchParams.get('mode') === 'checkout');
+  const isCheckin = searchParams.get('mode') === 'checkin';
 
   useEffect(() => {
     isMounted.current = true;
@@ -221,19 +222,43 @@ const isCheckin = searchParams.get('mode') === 'checkin';
         if (isMounted.current) setModelsReady(true);
       }
 
-      // Load face embeddings from Supabase, today's summary from VPS
-      const [embeddings, summary] = await Promise.all([
+      // Load face embeddings from Supabase, today's summary from VPS, and employees from Supabase
+      const [embeddings, summary, employeesList] = await Promise.all([
         getAllFaceEmbeddings(),
         fetchTodaySummaryFromVPS(),
+        getAllEmployees(),
       ]);
 
       if (!isMounted.current) return;
-      setStoredEmbeddings(embeddings);
-      setTodaySummary(summary);
+      
+      // Map names from employeesList to embeddings and summary
+      const empMap = {};
+      if (employeesList) {
+        employeesList.forEach(e => { empMap[e.id] = e; });
+      }
 
-      const present = summary.filter((r: any) => r.status === 'present' || r.clock_in).length;
-      const late = summary.filter((r: any) => r.status === 'late').length;
-      const total = summary.length;
+      const enrichedEmbeddings = embeddings.map(emb => {
+        if (!emb.employees || !emb.employees.full_name) {
+          emb.employees = emb.employees || {};
+          emb.employees.full_name = empMap[emb.employee_id]?.full_name || 'Employee';
+          emb.employees.department = empMap[emb.employee_id]?.department || '';
+        }
+        return emb;
+      });
+
+      const enrichedSummary = summary.map(r => {
+        if (!r.name && !r.full_name) {
+          r.name = empMap[r.employee_id]?.full_name || r.name;
+        }
+        return r;
+      });
+
+      setStoredEmbeddings(enrichedEmbeddings);
+      setTodaySummary(enrichedSummary);
+
+      const present = enrichedSummary.filter((r: any) => r.status === 'present' || r.clock_in).length;
+      const late = enrichedSummary.filter((r: any) => r.status === 'late').length;
+      const total = enrichedSummary.length;
       setStats({ present, late, absent: Math.max(0, total - present - late), total });
     } catch (err) {
       console.error('[FaceAttendance] Init error:', err);
@@ -242,7 +267,7 @@ const isCheckin = searchParams.get('mode') === 'checkin';
     }
   }
 
-  function handleStartScan() {
+  function handleStartScan(mode: 'checkin' | 'checkout' = 'checkin') {
     if (!modelsReady) {
       setScanMessage('AI models still loading, please wait…');
       return;
@@ -251,6 +276,7 @@ const isCheckin = searchParams.get('mode') === 'checkin';
       setScanMessage('No faces registered yet. Please ask an admin to register employee faces first.');
       return;
     }
+    setIsCheckout(mode === 'checkout');
     setScanPhase('scanning');
     setScanning(true);
     setScanResult(null);
@@ -312,10 +338,14 @@ const isCheckin = searchParams.get('mode') === 'checkin';
           action = 'already-done';
         }
       } else {
-        // No record yet — record check-in
-        const newRecord = await syncCheckIn(matchResult.employeeId, matchResult.confidence);
-        checkInTime = newRecord.check_in;
-        action = 'check-in';
+        // No record yet
+        if (isCheckout) {
+          throw new Error('Cannot Punch Out because you have not Punched In today.');
+        } else {
+          const newRecord = await syncCheckIn(matchResult.employeeId, matchResult.confidence);
+          checkInTime = newRecord.check_in;
+          action = 'check-in';
+        }
       }
 
       if (!isMounted.current) return;
@@ -336,12 +366,25 @@ const isCheckin = searchParams.get('mode') === 'checkin';
         }, 2500);
       }
 
+      // Fetch summary and enrich with employee names
       const summary = await fetchTodaySummaryFromVPS();
+      const employeesList = await getAllEmployees();
+      const empMap = {};
+      if (employeesList) {
+        employeesList.forEach(e => { empMap[e.id] = e; });
+      }
+      const enrichedSummary = summary.map(r => {
+        if (!r.name && !r.full_name) {
+          r.name = empMap[r.employee_id]?.full_name || r.name;
+        }
+        return r;
+      });
+
       if (isMounted.current) {
-        setTodaySummary(summary);
-        const present = summary.filter((r: any) => r.status === 'present' || r.clock_in).length;
-        const late = summary.filter((r: any) => r.status === 'late').length;
-        setStats({ present, late, absent: Math.max(0, summary.length - present - late), total: summary.length });
+        setTodaySummary(enrichedSummary);
+        const present = enrichedSummary.filter((r: any) => r.status === 'present' || r.clock_in).length;
+        const late = enrichedSummary.filter((r: any) => r.status === 'late').length;
+        setStats({ present, late, absent: Math.max(0, enrichedSummary.length - present - late), total: enrichedSummary.length });
       }
     } catch (err: any) {
       if (!isMounted.current) return;
@@ -435,18 +478,37 @@ const isCheckin = searchParams.get('mode') === 'checkin';
                 </p>
               )}
 
-              <button
-                style={{
-                  ...styles.btnStart,
-                  opacity: modelsReady ? 1 : 0.45,
-                  cursor: modelsReady ? 'pointer' : 'not-allowed',
-                }}
-                onClick={handleStartScan}
-                disabled={!modelsReady}
-              >
-                <span style={styles.btnStartIcon}>◉</span>
-                {modelsReady ? 'Start Face Scan' : 'Loading AI Models…'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '8px', width: '100%' }}>
+                <button
+                  style={{
+                    ...styles.btnStart,
+                    flex: 1,
+                    justifyContent: 'center',
+                    opacity: modelsReady ? 1 : 0.45,
+                    cursor: modelsReady ? 'pointer' : 'not-allowed',
+                  }}
+                  onClick={() => handleStartScan('checkin')}
+                  disabled={!modelsReady}
+                >
+                  <span style={styles.btnStartIcon}>➡️</span>
+                  Punch In
+                </button>
+                <button
+                  style={{
+                    ...styles.btnStart,
+                    flex: 1,
+                    justifyContent: 'center',
+                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    opacity: modelsReady ? 1 : 0.45,
+                    cursor: modelsReady ? 'pointer' : 'not-allowed',
+                  }}
+                  onClick={() => handleStartScan('checkout')}
+                  disabled={!modelsReady}
+                >
+                  <span style={styles.btnStartIcon}>⬅️</span>
+                  Punch Out
+                </button>
+              </div>
 
               {scanMessage && (
                 <p style={{ color: '#ff8099', fontSize: '13px', margin: '8px 0 0', textAlign: 'center' }}>
@@ -510,7 +572,7 @@ const isCheckin = searchParams.get('mode') === 'checkin';
               <div style={styles.resultIcon}>
                 <span style={{ fontSize: '32px', color: '#00ff88' }}>✓</span>
               </div>
-              <div style={styles.resultEmployeeName}>{scanResult.employee?.name ?? 'Employee'}</div>
+              <div style={styles.resultEmployeeName}>{scanResult.employee?.full_name ?? 'Employee'}</div>
               <div style={styles.resultDept}>{scanResult.employee?.department}</div>
 
               <div style={styles.resultChips}>

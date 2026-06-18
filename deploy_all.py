@@ -132,11 +132,13 @@ def main():
 
     # Upload .env for backend
     env_content = (
-        f"PORT=8082\n"
-        f"SUPABASE_URL={supabase_url}\n"
-        f"SUPABASE_SERVICE_ROLE_KEY={supabase_key}\n"
-        f"DEVICE_TIMEZONE_OFFSET=+05:30\n"
-        f"PG_PASSWORD=Shastika2026\n"
+      f"PORT=8082\n"
+      f"SUPABASE_URL={supabase_url}\n"
+      f"SUPABASE_SERVICE_ROLE_KEY={supabase_key}\n"
+      f"DEVICE_TIMEZONE_OFFSET=+05:30\n"
+      f"PG_PASSWORD=Shastika2026\n"
+      f"ZOHO_CLIENT_ID={local_env.get('VITE_ZOHO_CLIENT_ID', '')}\n"
+      f"ZOHO_CLIENT_SECRET={local_env.get('ZOHO_CLIENT_SECRET', '')}\n"
     )
     sftp.putfo(io.BytesIO(env_content.encode("utf-8")), f"{REMOTE_BACKEND}/.env")
     print("   ✅ Backend .env uploaded!")

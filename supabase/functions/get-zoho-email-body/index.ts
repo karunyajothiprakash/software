@@ -108,7 +108,7 @@ serve(async (req) => {
     }
 
     // 6. Fetch attachments info and download them
-    const attachmentInfoUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${targetFolder.folderId}/messages/${messageId}/attachmentinfo`;
+    const attachmentInfoUrl = `https://mail.${apiDomain}/api/accounts/${verifiedZohoId}/folders/${targetFolder.folderId}/messages/${messageId}/attachmentinfo?includeInline=true`;
     const attachmentInfoResponse = await fetch(attachmentInfoUrl, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
@@ -120,11 +120,16 @@ serve(async (req) => {
       attachmentDebugInfo = attachmentInfoData;
       let attachmentsList: any[] = [];
       
-      // Handle different Zoho API response structures
-      if (Array.isArray(attachmentInfoData.data)) {
-        attachmentsList = attachmentInfoData.data;
-      } else if (attachmentInfoData.data && Array.isArray(attachmentInfoData.data.attachments)) {
-        attachmentsList = attachmentInfoData.data.attachments;
+      if (attachmentInfoData.data) {
+        if (Array.isArray(attachmentInfoData.data.attachments)) {
+          attachmentsList = attachmentsList.concat(attachmentInfoData.data.attachments);
+        }
+        if (Array.isArray(attachmentInfoData.data.inline)) {
+          attachmentsList = attachmentsList.concat(attachmentInfoData.data.inline);
+        }
+        if (Array.isArray(attachmentInfoData.data) && attachmentsList.length === 0) {
+          attachmentsList = attachmentsList.concat(attachmentInfoData.data);
+        }
       }
       
       if (attachmentsList.length > 0) {
@@ -153,7 +158,16 @@ serve(async (req) => {
             const fileData = new Uint8Array(arrayBuffer);
 
             // Check if it's an inline image (used in the body)
+            const possibleCids = new Set<string>();
             const cid = att.contentId || att.cid || att.content_id || att.cidValue;
+            if (cid) {
+              possibleCids.add(String(cid).replace(/[<>]/g, '').trim());
+            }
+            if (att.storeName) possibleCids.add(String(att.storeName).trim());
+            if (attachmentId) possibleCids.add(String(attachmentId).trim());
+            if (filenameRaw) possibleCids.add(String(filenameRaw).trim());
+            if (att.attachmentName) possibleCids.add(String(att.attachmentName).trim());
+
             const isInline = Boolean(cid) || att.isInline === "1" || att.isInline === true || att.inline === true || att.is_inline === 1;
 
             if (isInline && (contentType || "").toString().startsWith("image/")) {
@@ -162,13 +176,16 @@ serve(async (req) => {
                 const base64Str = encode(fileData instanceof Uint8Array ? fileData : new Uint8Array(fileData));
                 const dataUri = `data:${contentType};base64,${base64Str}`;
 
-                // Replace cid references in the HTML content robustly
-                if (cid) {
-                  const cleanCid = String(cid).replace(/[<>]/g, '');
-                  // match src=cid:..., src="cid:...", src='cid:...'
-                  const srcRegex = new RegExp(`src=["']?cid:?<?${cleanCid}[^"'\\s>]*>?(["']?)`, "gi"); htmlContent = htmlContent.replace(srcRegex, `src="${dataUri}"`); const rawRegex = new RegExp(`cid:?<?${cleanCid}[^"'\\s>]*>?`, "gi");
+                for (const c of possibleCids) {
+                  if (!c || c.length < 3) continue; // avoid matching very short strings
+                  const escC = c.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
                   
-                  // Also replace plain cid references without src= (rare)
+                  // Match src="...cid:<?c... " or src="...cid=c... " or src="...c..."
+                  const srcAttrRegex = new RegExp(`src=(["'])([^"']*(?:cid:?<?${escC}|cid=${escC}|${escC})[^"']*)\\1`, "gi");
+                  htmlContent = htmlContent.replace(srcAttrRegex, `src=$1${dataUri}$1`);
+                  
+                  // Also match raw cid:<?c>? references (fallback)
+                  const rawRegex = new RegExp(`cid:?<?${escC}[^"'\\s>]*>?`, "gi");
                   htmlContent = htmlContent.replace(rawRegex, dataUri);
                 }
               } catch (err) {
