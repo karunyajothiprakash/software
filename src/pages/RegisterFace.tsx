@@ -1,8 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import FaceScanner from '../components/FaceScanner';
+import { supabase } from '@/integrations/supabase/client';
 import {
-  getEmployees,
-  createEmployee,
   saveFaceEmbedding,
   deleteFaceEmbeddings,
   getEmployeeFaceEmbeddings,
@@ -96,7 +95,12 @@ export default function RegisterFace() {
   async function fetchEmployees() {
     setLoadingEmployees(true);
     try {
-      const data = await getEmployees();
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/employees', {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+      if (!res.ok) throw new Error('Failed to fetch from API');
+      const data = await res.json();
       if (isMounted.current) setEmployees(data);
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to load employees: ' + err.message });
@@ -123,24 +127,8 @@ export default function RegisterFace() {
 
   async function handleCreateEmployee(e) {
     e.preventDefault();
-    if (!newEmployee.full_name || !newEmployee.email) {
-      setMessage({ type: 'error', text: 'Name and email are required.' });
-      return;
-    }
-    setCreatingEmployee(true);
-    try {
-      const created = await createEmployee({ ...newEmployee, role: 'employee', is_active: true });
-      setEmployees((prev) => [...prev, created]);
-      setSelectedEmployee(created);
-      setExistingSamples(0);
-      setNewEmployee({ full_name: '', email: '', department: '' });
-      setShowNewForm(false);
-      setMessage({ type: 'success', text: `Employee "${created.full_name}" created successfully.` });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to create employee: ' + err.message });
-    } finally {
-      if (isMounted.current) setCreatingEmployee(false);
-    }
+    setMessage({ type: 'error', text: 'Please create new employees through the Directory or Auth page to ensure they sync properly.' });
+    setShowNewForm(false);
   }
 
   // ── Camera phase ──────────────────────────────────────────────────────────

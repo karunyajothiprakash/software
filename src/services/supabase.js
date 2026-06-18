@@ -30,6 +30,16 @@ export async function getEmployees() {
     return data;
 }
 
+export async function getAllEmployees() {
+    const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .order('full_name');
+    if (error) throw error;
+    return data;
+}
+
+
 export async function getEmployee(employeeId) {
     const { data, error } = await supabase
         .from('employees')
@@ -53,6 +63,8 @@ export async function createEmployee(payload) {
 // ─── Face Embedding helpers ───────────────────────────────────────────────────
 
 export async function saveFaceEmbedding(employeeId, embeddingArray, sampleIndex = 0, qualityScore = null) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No session');
     const payload = {
         employee_id: employeeId,
         face_embedding: Array.from(embeddingArray),
@@ -60,49 +72,44 @@ export async function saveFaceEmbedding(employeeId, embeddingArray, sampleIndex 
         quality_score: qualityScore,
         model_version: 'face-api-ssd-mobilenetv1',
     };
-    const { data, error } = await supabase
-        .from('face_embeddings')
-        .upsert([payload], { onConflict: 'employee_id,sample_index' })
-        .select()
-        .single();
-    if (error) throw error;
-    return data;
+    const res = await fetch('/api/employees/bio-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Failed to save face embedding to VPS DB');
+    return await res.json();
 }
 
 export async function getEmployeeFaceEmbeddings(employeeId) {
-    const { data, error } = await supabase
-        .from('face_embeddings')
-        .select('*')
-        .eq('employee_id', employeeId)
-        .order('sample_index');
-    if (error) throw error;
-    return data;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No session');
+    const res = await fetch(`/api/employees/${employeeId}/bio-data`, {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch face embeddings from VPS DB');
+    return await res.json();
 }
 
 export async function getAllFaceEmbeddings() {
-    const { data, error } = await supabase
-        .from('face_embeddings')
-        .select(`
-            id,
-            employee_id,
-            face_embedding,
-            sample_index,
-            quality_score,
-            employees ( id, full_name, email, role )
-        `);
-    if (error) throw error;
-    return data;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No session');
+    const res = await fetch('/api/employees/bio-data/all', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch all face embeddings from VPS DB');
+    return await res.json();
 }
 
 export async function deleteFaceEmbeddings(employeeId) {
-    // Soft-delete embeddings to retain historical data for audits
-    const { data: authData } = await supabase.auth.getUser();
-    const currentUserId = authData?.user?.id || null;
-    const { error } = await supabase
-        .from('face_embeddings')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: currentUserId })
-        .eq('employee_id', employeeId);
-    if (error) throw error;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No session');
+    const res = await fetch(`/api/employees/${employeeId}/bio-data`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+    });
+    if (!res.ok) throw new Error('Failed to delete face embeddings from VPS DB');
+    return await res.json();
 }
 
 // ─── Attendance helpers ───────────────────────────────────────────────────────

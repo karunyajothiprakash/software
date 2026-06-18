@@ -170,4 +170,81 @@ router.put('/all/profiles/:id', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/employees/bio-data - Save face embedding to VPS DB
+router.post('/bio-data', requireAuth, async (req, res) => {
+  try {
+    const { employee_id, face_embedding, sample_index, quality_score, model_version } = req.body;
+    const { rows } = await db.query(
+      `INSERT INTO face_embeddings (employee_id, face_embedding, sample_index, quality_score, model_version) 
+       VALUES ($1, $2, $3, $4, $5) 
+       ON CONFLICT (employee_id, sample_index) 
+       DO UPDATE SET face_embedding = EXCLUDED.face_embedding, quality_score = EXCLUDED.quality_score, model_version = EXCLUDED.model_version
+       RETURNING *`,
+      [employee_id, JSON.stringify(face_embedding), sample_index || 0, quality_score || null, model_version || 'face-api-ssd-mobilenetv1']
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('POST /api/employees/bio-data error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /api/employees/bio-data/all - Fetch all face embeddings from VPS DB
+router.get('/bio-data/all', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT f.id, f.employee_id, f.face_embedding, f.sample_index, f.quality_score,
+             p.id as profile_id, p.full_name, p.email, p.requested_role as role
+      FROM face_embeddings f
+      LEFT JOIN profiles p ON f.employee_id::text = p.id::text
+    `);
+    
+    const mapped = rows.map(r => ({
+      id: r.id,
+      employee_id: r.employee_id,
+      face_embedding: r.face_embedding,
+      sample_index: r.sample_index,
+      quality_score: r.quality_score,
+      employees: {
+        id: r.profile_id,
+        full_name: r.full_name,
+        email: r.email,
+        role: r.role
+      }
+    }));
+    
+    res.json(mapped);
+  } catch (err) {
+    console.error('GET /api/employees/bio-data/all error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /api/employees/:id/bio-data - Fetch face embeddings for an employee from VPS DB
+router.get('/:id/bio-data', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await db.query(
+      'SELECT * FROM face_embeddings WHERE employee_id::text = $1 ORDER BY sample_index',
+      [id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /api/employees/:id/bio-data error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// DELETE /api/employees/:id/bio-data - Delete face embeddings for an employee from VPS DB
+router.delete('/:id/bio-data', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM face_embeddings WHERE employee_id::text = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /api/employees/:id/bio-data error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 module.exports = router;
