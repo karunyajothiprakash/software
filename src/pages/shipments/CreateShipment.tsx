@@ -174,6 +174,66 @@ export default function CreateShipment() {
       const headers: any = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
+      // 1. Check and create Carrier on-the-fly
+      const trimmedCarrier = carrier.trim();
+      const existingCarrier = carriersList.find(c => c.name.toLowerCase() === trimmedCarrier.toLowerCase());
+      if (!existingCarrier) {
+        const newCode = trimmedCarrier.substring(0, 3).toUpperCase();
+        await fetch('/api/finance/shipping_carriers', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ name: trimmedCarrier, code: newCode })
+        });
+      }
+
+      // 2. Check and create Origin Port on-the-fly
+      const trimmedOrigin = originPort.trim();
+      const existingOrigin = portsList.find(p => p.name.toLowerCase() === trimmedOrigin.toLowerCase());
+      if (!existingOrigin) {
+        const rand = Math.floor(Math.random() * 9000 + 1000);
+        const newCode = `PRT-${rand}`;
+        await fetch('/api/finance/shipping_ports', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            name: trimmedOrigin,
+            country: 'Unknown',
+            code: newCode
+          })
+        });
+      }
+
+      // 3. Check and create Destination Port on-the-fly
+      const trimmedDest = destinationPort.trim();
+      const existingDest = portsList.find(p => p.name.toLowerCase() === trimmedDest.toLowerCase());
+      if (!existingDest && trimmedDest.toLowerCase() !== trimmedOrigin.toLowerCase()) {
+        const rand = Math.floor(Math.random() * 9000 + 1000);
+        const newCode = `PRT-${rand}`;
+        await fetch('/api/finance/shipping_ports', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            name: trimmedDest,
+            country: 'Unknown',
+            code: newCode
+          })
+        });
+      }
+
+      // 4. Check and create Container Type on-the-fly
+      const trimmedType = containerType.trim();
+      const existingType = containerTypesList.find(c => c.name.toLowerCase() === trimmedType.toLowerCase());
+      if (!existingType) {
+        await fetch('/api/finance/container_types', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            name: trimmedType,
+            description: 'Automatically created container type'
+          })
+        });
+      }
+
       const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
       const shipmentNumber = `SHP-${new Date().getFullYear()}-${rand}`;
 
@@ -191,9 +251,9 @@ export default function CreateShipment() {
           order_id: orderId,
           shipment_number: shipmentNumber,
           customer_name: selectedOrder?.customer_name,
-          carrier,
-          origin_port: originPort,
-          destination_port: destinationPort,
+          carrier: trimmedCarrier,
+          origin_port: trimmedOrigin,
+          destination_port: trimmedDest,
           departure_date: departureDate || null,
           eta: eta || null,
           total_cartons: selectedOrder?.total_cartons,
@@ -211,7 +271,7 @@ export default function CreateShipment() {
         company_id: profile!.company_id,
         shipment_id: shipment.id,
         container_number: `TBD-${i+1}`,
-        container_type: containerType,
+        container_type: trimmedType,
         weight_kg: weightPerContainer,
         status: 'Pending'
       }));
@@ -342,12 +402,15 @@ export default function CreateShipment() {
         <Section title="Carrier & Logistics">
           <FormGrid>
             <FormRow label="Shipping Line / Carrier" required>
-              <Select value={carrier} onValueChange={setCarrier}>
-                <SelectTrigger><SelectValue placeholder="Select carrier" /></SelectTrigger>
-                <SelectContent>
-                  {carriersList.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Input
+                value={carrier}
+                onChange={e => setCarrier(e.target.value)}
+                placeholder="Type or select carrier..."
+                list="carriers-datalist"
+              />
+              <datalist id="carriers-datalist">
+                {carriersList.map(c => <option key={c.id || c.name} value={c.name} />)}
+              </datalist>
             </FormRow>
           </FormGrid>
         </Section>
@@ -355,12 +418,16 @@ export default function CreateShipment() {
           <FormGrid>
             <FormRow label="Port of loading" required>
               <div className="flex gap-2">
-                <Select value={originPort} onValueChange={setOriginPort}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select origin port" /></SelectTrigger>
-                  <SelectContent>
-                    {portsList.map(p => <SelectItem key={p.code} value={p.name}>{p.name} ({p.code})</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input
+                  className="flex-1"
+                  value={originPort}
+                  onChange={e => setOriginPort(e.target.value)}
+                  placeholder="Type or select port..."
+                  list="ports-datalist"
+                />
+                <datalist id="ports-datalist">
+                  {portsList.map(p => <option key={p.id || p.code} value={p.name} />)}
+                </datalist>
                 <Button variant="outline" size="icon" onClick={() => setIsPortModalOpen(true)} title="Add new port">
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -368,12 +435,13 @@ export default function CreateShipment() {
             </FormRow>
             <FormRow label="Port of discharge" required>
               <div className="flex gap-2">
-                <Select value={destinationPort} onValueChange={setDestinationPort}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select destination port" /></SelectTrigger>
-                  <SelectContent>
-                    {portsList.map(p => <SelectItem key={p.code} value={p.name}>{p.name} ({p.code})</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input
+                  className="flex-1"
+                  value={destinationPort}
+                  onChange={e => setDestinationPort(e.target.value)}
+                  placeholder="Type or select port..."
+                  list="ports-datalist"
+                />
                 <Button variant="outline" size="icon" onClick={() => setIsPortModalOpen(true)} title="Add new port">
                   <Plus className="h-4 w-4" />
                 </Button>
@@ -388,12 +456,16 @@ export default function CreateShipment() {
             <FormRow label="Number of containers"><Input type="number" min="1" value={containerCount} onChange={e => setContainerCount(e.target.value)} /></FormRow>
             <FormRow label="Container type" required>
               <div className="flex gap-2">
-                <Select value={containerType} onValueChange={setContainerType}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder="Select container type" /></SelectTrigger>
-                  <SelectContent>
-                    {containerTypesList.map(c => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input
+                  className="flex-1"
+                  value={containerType}
+                  onChange={e => setContainerType(e.target.value)}
+                  placeholder="Type or select container type..."
+                  list="containers-datalist"
+                />
+                <datalist id="containers-datalist">
+                  {containerTypesList.map(c => <option key={c.id || c.name} value={c.name} />)}
+                </datalist>
                 <Button variant="outline" size="icon" onClick={() => setIsContainerModalOpen(true)} title="Add new container type">
                   <Plus className="h-4 w-4" />
                 </Button>

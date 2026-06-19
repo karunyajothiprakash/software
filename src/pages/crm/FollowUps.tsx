@@ -58,8 +58,7 @@ export default function FollowUps() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [followUpDate, setFollowUpDate] = useState("");
-  const [reminderTime, setReminderTime] = useState("09:00");
-  const [timePeriod, setTimePeriod] = useState<"AM" | "PM">("AM");
+  const [reminderTime, setReminderTime] = useState("");
   const [contactMethod, setContactMethod] = useState("WhatsApp");
   const [note, setNote] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
@@ -146,43 +145,64 @@ export default function FollowUps() {
   useEffect(() => {
     const checkReminders = () => {
       const now = new Date();
-      const todayStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+      // Use LOCAL date string (not UTC) to avoid timezone drift around midnight
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
       const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      
+      console.log(`[Reminders] Checking at ${now.toLocaleTimeString()}. Today is ${todayStr}. nowMinutes=${nowMinutes}`);
+      if (followUps.length > 0) {
+        console.log(`[Reminders] Dumping followUps data (count: ${followUps.length}):`);
+        console.table(followUps.map(f => ({ id: f.id, company: f.company_name, date: f.follow_up_date, time: f.reminder_time, notified: f.is_notified })));
+      }
 
       followUps.forEach((fu) => {
-        if (fu.is_notified) return;                 // already acknowledged
+        if (fu.is_notified) return;                  // already acknowledged
         if (firedReminders.current.has(fu.id)) return; // already alerted this session
+        if (!fu.reminder_time) return;               // no time set
+        if (!fu.follow_up_date) return;              // no date set
 
-        const fuDate = fu.follow_up_date?.slice(0, 10);
-        if (fuDate !== todayStr) return;             // not today
+        // API returns UTC ISO strings (e.g. "2026-06-18T18:30:00.000Z" which is June 19 IST).
+        // We MUST parse it to a Date object to get the correct LOCAL date.
+        const fuDateObj = new Date(fu.follow_up_date);
+        const fuDateLocalStr = `${fuDateObj.getFullYear()}-${String(fuDateObj.getMonth()+1).padStart(2,'0')}-${String(fuDateObj.getDate()).padStart(2,'0')}`;
 
-        if (!fu.reminder_time) return;
+        if (fuDateLocalStr !== todayStr) {
+          console.log(`[Reminders] Skipping ${fu.company_name} because date ${fuDateLocalStr} != ${todayStr}`);
+          return;
+        }
+
         const [h, m] = fu.reminder_time.split(":").map(Number);
         const reminderMinutes = h * 60 + m;
+        console.log(`[Reminders] Checking ${fu.company_name}: time=${fu.reminder_time} (${reminderMinutes} mins) vs now=${nowMinutes} mins`);
 
-        // Fire when current time is within a ±2-minute window of reminder time
-        if (Math.abs(nowMinutes - reminderMinutes) <= 2) {
+        // Fire if: we're within ±2 min of the reminder OR it's already past (overdue)
+        const isPastDue = nowMinutes >= reminderMinutes;
+        const isWithinWindow = Math.abs(nowMinutes - reminderMinutes) <= 2;
+
+        if (isPastDue || isWithinWindow) {
           firedReminders.current.add(fu.id);
 
           const displayTime = new Date(`2000-01-01T${fu.reminder_time}`)
             .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
 
+          const isOverdue = nowMinutes > reminderMinutes + 2;
+          const title = isOverdue ? "⚠️ Overdue Follow-Up" : "🔔 Follow-Up Reminder";
+          const body = `${fu.company_name}${fu.contact_name ? ` — ${fu.contact_name}` : ""} · ${displayTime}`;
+
           // Browser Notification
           if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-            new Notification("Follow-Up Reminder", {
-              body: `${fu.company_name}${fu.contact_name ? ` — ${fu.contact_name}` : ""} · ${displayTime}`,
-            });
-          } else {
-            // Fallback toast
-            toast(`🔔 Follow-Up Reminder`, {
-              description: `${fu.company_name}${fu.contact_name ? ` — ${fu.contact_name}` : ""} · ${displayTime}`,
-              duration: 30000,
-              action: {
-                label: "Acknowledge",
-                onClick: () => handleAcknowledge(fu.id),
-              },
-            });
+            new Notification(title, { body });
           }
+
+          // Always show toast (whether or not browser notification works)
+          toast(title, {
+            description: body,
+            duration: isOverdue ? 60000 : 30000,
+            action: {
+              label: "Acknowledge",
+              onClick: () => handleAcknowledge(fu.id),
+            },
+          });
         }
       });
     };
@@ -208,11 +228,11 @@ export default function FollowUps() {
 
     const assignee = assignedTo;
     
-    // Convert 12h to 24h for storage
-    let [hours, minutes] = reminderTime.split(':').map(Number);
-    if (timePeriod === "PM" && hours < 12) hours += 12;
-    if (timePeriod === "AM" && hours === 12) hours = 0;
-    const finalTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+    // <input type="time"> already returns 24h format (HH:MM) — use it directly
+    let finalTime: string | null = null;
+    if (reminderTime) {
+      finalTime = `${reminderTime}:00`; // e.g. "14:30" → "14:30:00"
+    }
 
     const combinedNote = note.trim() 
       ? `${contactMethod}: ${note.trim()}`
@@ -260,8 +280,15 @@ export default function FollowUps() {
             company_name: lead.company_name,
             contact_name: lead.contact_name,
             follow_up_date: followUpDate,
+            reminder_time: finalTime,
             note: combinedNote,
-            assigned_to: assignee
+            assigned_to: assignee,
+            business_category: lead.business_category,
+            product_type: lead.product_type,
+            country: lead.country,
+            mobile: lead.mobile,
+            email: lead.email,
+            website: lead.website,
           })
         });
         if (!res.ok) throw new Error("Failed to create follow-up");
@@ -279,8 +306,7 @@ export default function FollowUps() {
   const resetForm = () => {
     setSelectedLeadId("");
     setFollowUpDate("");
-    setReminderTime("09:00");
-    setTimePeriod("AM");
+    setReminderTime("");
     setContactMethod("WhatsApp");
     setNote("");
     setAssignedTo(bdeMembers[0]?.full_name || "");
@@ -304,17 +330,10 @@ export default function FollowUps() {
       setNote("");
     }
 
-    // Parse time
-    const timeStr = followUp.reminder_time || "09:00:00";
-    let [h, m] = timeStr.split(":").map(Number);
-    if (h >= 12) {
-      setTimePeriod("PM");
-      if (h > 12) h -= 12;
-    } else {
-      setTimePeriod("AM");
-      if (h === 0) h = 12;
-    }
-    setReminderTime(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+    // Parse time — stored in 24h (HH:MM:SS), set directly into input
+    const timeStr = followUp.reminder_time || "";
+    // input[type=time] wants HH:MM format
+    setReminderTime(timeStr ? timeStr.slice(0, 5) : "");
     
     setIsEditing(true);
     setIsDialogOpen(true);
@@ -497,7 +516,7 @@ export default function FollowUps() {
                         <Bell className="h-3 w-3" />
                         {new Date(`2000-01-01T${followUp.reminder_time}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                       </div>
-                    ) : "09:00 AM"}
+                    ) : <span className="text-muted-foreground text-xs">—</span>}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     {!followUp.is_notified && (
@@ -636,25 +655,14 @@ export default function FollowUps() {
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-foreground">Reminder Time *</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="time"
-                  value={reminderTime}
-                  onChange={(e) => setReminderTime(e.target.value)}
-                  required
-                  className="bg-background border-input flex-1"
-                />
-                <Select value={timePeriod} onValueChange={(v: any) => setTimePeriod(v)}>
-                  <SelectTrigger className="w-[80px]">
-                    <SelectValue placeholder="AM/PM" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border">
-                    <SelectItem value="AM">AM</SelectItem>
-                    <SelectItem value="PM">PM</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <Label className="text-foreground">Reminder Time</Label>
+              <Input
+                type="time"
+                value={reminderTime}
+                onChange={(e) => setReminderTime(e.target.value)}
+                className="bg-background border-input w-full"
+              />
+              <p className="text-xs text-muted-foreground">Leave blank for no reminder. Use 24-hour format (e.g. 14:30 = 2:30 PM).</p>
             </div>
             <div className="space-y-2">
               <Label className="text-foreground">Assigned To</Label>
@@ -726,7 +734,7 @@ export default function FollowUps() {
                 <DetailItem label="Contact Name" value={selectedFollowUp.contact_name} />
                                 <div className="grid grid-cols-2 gap-4">
                   <DetailItem label="Follow-Up Date" value={formatDate(selectedFollowUp.follow_up_date)} />
-                  <DetailItem label="Reminder Time" value={selectedFollowUp.reminder_time ? new Date(`2000-01-01T${selectedFollowUp.reminder_time}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : "09:00 AM"} />
+                  <DetailItem label="Reminder Time" value={selectedFollowUp.reminder_time ? new Date(`2000-01-01T${selectedFollowUp.reminder_time}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : undefined} />
                 </div>
 
                 <DetailItem label="Assigned To" value={selectedFollowUp.assigned_to} />

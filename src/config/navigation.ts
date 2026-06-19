@@ -119,13 +119,13 @@ export const navGroups: NavGroup[] = [
         url: "/warehouse/inventory",
         icon: Boxes,
         items: [
-          { title: "Available Stock Management", url: "/inventory/available-stock", icon: CheckSquare },
-          { title: "Reserved Stock Tracking", url: "/inventory/reserved-stock", icon: Lock },
-          { title: "Export Ready Inventory", url: "/inventory/export-ready", icon: Plane },
-          { title: "Batch-wise Stock Tracking", url: "/inventory/batch-wise", icon: Layers },
-          { title: "Damaged Stock Management", url: "/inventory/damaged-stock-management", icon: AlertOctagon },
-          { title: "Expiry Monitoring", url: "/inventory/expiry-monitoring", icon: Timer },
           { title: "Multi-Warehouse Management", url: "/inventory/multi-warehouse", icon: Warehouse },
+          { title: "Available Stock Management", url: "/inventory/available-stock", icon: CheckSquare },
+          { title: "Batch-wise Stock Tracking", url: "/inventory/batch-wise", icon: Layers },
+          { title: "Reserved Stock Tracking", url: "/inventory/reserved-stock", icon: Lock },
+          { title: "Expiry Monitoring", url: "/inventory/expiry-monitoring", icon: Timer },
+          { title: "Damaged Stock Management", url: "/inventory/damaged-stock-management", icon: AlertOctagon },
+          { title: "Export Ready Inventory", url: "/inventory/export-ready", icon: Plane },
           { title: "Packing Management", url: "/warehouse/packing", icon: Package },
         ]
       },
@@ -134,23 +134,10 @@ export const navGroups: NavGroup[] = [
         url: "/qc",
         icon: ClipboardCheck,
         items: [
-          { title: "Inspection", url: "/qc/inspections", icon: ClipboardCheck, permission: "qc.view" },
           { title: "New Inspection", url: "/qc/inspections/create", icon: FlaskConical, permission: "qc.inspect" },
+          { title: "Inspection", url: "/qc/inspections", icon: ClipboardCheck, permission: "qc.view" },
           { title: "Approvals", url: "/qc/approvals", icon: BadgeCheck, permission: "qc.approve" },
-          { title: "WH Quality Control", url: "/warehouse/qc", icon: FlaskConical, permission: "qc.inspect" },
           { title: "Container Loading", url: "/warehouse/container-loading", icon: Container, permission: "shipments.manage" },
-        ]
-      },
-      {
-        title: "Shipments",
-        url: "/shipments",
-        icon: Ship,
-        items: [
-          { title: "Dispatch", url: "/shipments/dispatch", icon: Truck, permission: "shipments.manage" },
-          { title: "Shipment Register", url: "/shipments", icon: Ship, permission: "shipments.view" },
-          { title: "Create Shipment", url: "/shipments/create", icon: FilePlus, permission: "shipments.manage" },
-          { title: "Container Tracking", url: "/shipments/containers", icon: Container, permission: "shipments.view" },
-          { title: "Delivery Status", url: "/shipments/delivery", icon: Navigation, permission: "shipments.view" },
         ]
       },
       {
@@ -168,8 +155,8 @@ export const navGroups: NavGroup[] = [
         url: "/quotations",
         icon: FileText,
         items: [
-          { title: "Quotations", url: "/quotations", icon: FileText, permission: "orders.view" },
           { title: "Create Quotation", url: "/quotations/create", icon: FilePlus, permission: "orders.manage" },
+          { title: "Quotations", url: "/quotations", icon: FileText, permission: "orders.view" },
           { title: "Approvals", url: "/quotations/approvals", icon: FileCheck, permission: "orders.manage" },
           { title: "Convert to Order", url: "/quotations/convert", icon: ArrowRightLeft, permission: "orders.manage" },
         ]
@@ -179,10 +166,22 @@ export const navGroups: NavGroup[] = [
         url: "/orders",
         icon: ShoppingCart,
         items: [
-          { title: "Orders", url: "/orders", icon: ShoppingCart, permission: "orders.view" },
           { title: "Create Order", url: "/orders/create", icon: ClipboardList, permission: "orders.manage" },
+          { title: "Orders", url: "/orders", icon: ShoppingCart, permission: "orders.view" },
           { title: "Status Tracking", url: "/orders/status", icon: PackageCheck, permission: "orders.view" },
           { title: "Fulfillment", url: "/orders/fulfillment", icon: Package2, permission: "orders.manage" },
+        ]
+      },
+      {
+        title: "Shipments",
+        url: "/shipments",
+        icon: Ship,
+        items: [
+          { title: "Create Shipment", url: "/shipments/create", icon: FilePlus, permission: "shipments.manage" },
+          { title: "Shipment Register", url: "/shipments", icon: Ship, permission: "shipments.view" },
+          { title: "Container Tracking", url: "/shipments/containers", icon: Container, permission: "shipments.view" },
+          { title: "Dispatch", url: "/shipments/dispatch", icon: Truck, permission: "shipments.manage" },
+          { title: "Delivery Status", url: "/shipments/delivery", icon: Navigation, permission: "shipments.view" },
         ]
       },
       {
@@ -198,20 +197,7 @@ export const navGroups: NavGroup[] = [
       },
     ],
   },
-  {
-    title: "Reports & Analytics",
-    icon: BarChart3,
-    items: [
-      { title: "Dashboard", url: "/reports", icon: LayoutDashboard },
-      { title: "Stock Summary", url: "/reports/stock-summary", icon: Package },
-      { title: "Batch Tracking", url: "/reports/batch-tracking", icon: BarChart3 },
-      { title: "Dispatch Report", url: "/reports/dispatch", icon: Truck },
-      { title: "Container Loading", url: "/reports/container-loading", icon: Container },
-      { title: "Damage/Wastage", url: "/reports/damage-wastage", icon: AlertTriangle },
-      { title: "Inventory Aging", url: "/reports/inventory-aging", icon: CalendarCheck },
-      { title: "Export Ready Stock", url: "/reports/export-ready", icon: BadgeCheck },
-    ],
-  },
+
   {
     title: "Finance",
     icon: Wallet,

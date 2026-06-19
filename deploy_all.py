@@ -21,6 +21,11 @@ REMOTE_BACKEND  = "/var/www/adms-sync"
 LOCAL_ROOT      = os.path.dirname(os.path.abspath(__file__))
 LOCAL_BACKEND   = os.path.join(LOCAL_ROOT, "adms-sync")
 LOCAL_DIST      = os.path.join(LOCAL_ROOT, "dist")
+LOCAL_BACKUPS   = os.path.join(LOCAL_ROOT, "backups")
+
+REMOTE_DB_NAME  = "shastika_erp"
+REMOTE_DB_USER  = "postgres"
+REMOTE_BACKUP_DIR = "/var/backups/shastika-erp"
 # ────────────────────────────────────────────────────────────────────────────
 
 def load_local_env():
@@ -88,24 +93,66 @@ def step_build_frontend():
 def main():
     print("=" * 60)
     print("🚀  Shastika Global Impex — Full Deploy")
-    print("    Frontend + Backend + DB check")
+    print("    DB Backup + Frontend + Backend")
     print("=" * 60)
 
     local_env = load_local_env()
     supabase_url = local_env.get("VITE_SUPABASE_URL", "")
     supabase_key = local_env.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
-    # ── STEP 1: Build Frontend ──────────────────────────────────────────────
-    step_build_frontend()
-
-    # ── CONNECT SSH ─────────────────────────────────────────────────────────
+    # ── CONNECT SSH (needed for Step 0 backup) ───────────────────────────────
     print(f"\n📡  Connecting to VPS {VPS_IP}:{VPS_PORT} ...")
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(VPS_IP, port=VPS_PORT, username=VPS_USER, password=VPS_PASSWORD, timeout=20)
     print("✅  SSH connected!")
-
     sftp = ssh.open_sftp()
+
+    # ── STEP 0: VPS DB Backup (before anything changes) ──────────────────────
+    print("\n" + "=" * 60)
+    print("💾  STEP 0 – Backing Up VPS PostgreSQL Database")
+    print("=" * 60)
+
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"backup_{timestamp}.sql"
+    remote_backup_path = f"{REMOTE_BACKUP_DIR}/{backup_filename}"
+    local_backup_path  = os.path.join(LOCAL_BACKUPS, backup_filename)
+
+    # Create backup dir on VPS
+    run_ssh(ssh, f"mkdir -p {REMOTE_BACKUP_DIR}", "Creating remote backup dir")
+
+    # Run pg_dump on VPS
+    dump_cmd = (
+        f"PGPASSWORD='{VPS_PASSWORD}' pg_dump "
+        f"-U {REMOTE_DB_USER} {REMOTE_DB_NAME} "
+        f"> {remote_backup_path}"
+    )
+    rc = run_ssh(ssh, dump_cmd, f"pg_dump → {backup_filename}")
+    if rc != 0:
+        print("   ⚠️  pg_dump failed! Proceeding anyway (check VPS manually).")
+    else:
+        print(f"   ✅ Remote backup saved: {remote_backup_path}")
+
+        # Download backup locally
+        os.makedirs(LOCAL_BACKUPS, exist_ok=True)
+        try:
+            sftp.get(remote_backup_path, local_backup_path)
+            print(f"   📥 Local backup saved:  backups/{backup_filename}")
+        except Exception as e:
+            print(f"   ⚠️  Could not download backup locally: {e}")
+
+        # Keep only last 7 backups on VPS
+        run_ssh(
+            ssh,
+            f"ls -1t {REMOTE_BACKUP_DIR}/backup_*.sql | tail -n +8 | xargs -r rm --",
+            "Pruning old backups (keep last 7)"
+        )
+
+    # ── STEP 1: Build Frontend ──────────────────────────────────────────────
+    step_build_frontend()
+
+    # (SSH already connected above for backup step)
 
     # ── STEP 2: Upload Frontend Build ───────────────────────────────────────
     print("\n" + "=" * 60)
@@ -200,6 +247,7 @@ def main():
     print(f"🌐  Site:    https://erp.shastikaglobalexport.co.in")
     print(f"🔧  API:     https://erp.shastikaglobalexport.co.in/api/")
     print(f"🗄️   DB:      PostgreSQL @ {VPS_IP} (shastika_erp)")
+    print(f"💾  Backup:  backups/{backup_filename}")
     print("=" * 60)
 
     sftp.close()

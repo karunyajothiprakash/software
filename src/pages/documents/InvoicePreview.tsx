@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Loader2, Download, Printer } from "lucide-react";
@@ -64,11 +65,18 @@ const INCOTERMS_OPTIONS = [
 ];
 
 export default function InvoicePreview() {
+  const { id } = useParams();
   const [view, setView] = useState("print");
   const [form, setForm] = useState(initialForm);
   const printRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+
+  // Helper to determine direct API target when running locally
+  const getApiUrl = (path: string) => {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    return isLocalhost ? `http://localhost:8082${path}` : path;
+  };
 
   useEffect(() => {
     async function fetchSignature() {
@@ -79,6 +87,79 @@ export default function InvoicePreview() {
     }
     fetchSignature();
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    
+    async function fetchInvoice() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+        const res = await fetch(getApiUrl(`/api/orders/${id}`), { headers });
+        if (!res.ok) throw new Error("Failed to fetch invoice details");
+        const order = await res.json();
+
+        setForm({
+          invoiceNo: order.invoice_number || order.order_number?.replace('EXP', 'PI') || "SGI/CI/2026/001",
+          date: order.order_date ? new Date(order.order_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          currency: order.currency || "USD",
+          importerName: order.customer_name || "",
+          importerAddress: order.shipping_address || "",
+          importerCountry: order.customer_country || "",
+          countryOfOrigin: order.country_of_origin || "India",
+          modeOfTransport: order.mode_of_transport || "Sea Freight",
+          incoterms: order.incoterms || "FOB – Chennai Port, India",
+          portOfLoading: order.port_of_loading || "Chennai Port, India",
+          portOfDischarge: order.port_of_discharge || "",
+          containerType: order.container_type || "20 or 40 Feet FCL Container",
+          loadingType: order.loading_type || "1 cubic meter",
+          paymentTerms: order.payment_terms || "90% Advance + 10% on Loading",
+          bankName: order.bank_name || "State Bank of India",
+          branch: order.bank_branch || "Erode, Tamil Nadu",
+          accountNo: order.account_no || "43841179923",
+          ifscCode: order.ifsc_code || "SBIN02278",
+          swiftCode: order.swift_code || "SBININBB",
+          items: [
+            {
+              id: 1,
+              description: order.product || "",
+              hsCode: order.hsn_code || "",
+              noOfPkgs: order.total_cartons ? `${order.total_cartons} Cartons` : "",
+              qty: order.quantity ? String(order.quantity) : "",
+              unit: order.unit || "Per Coconut",
+              unitPrice: order.unit_price ? String(order.unit_price) : "",
+            }
+          ],
+          packingType: order.packing_details || "Carton Box",
+          noOfCartons: order.total_cartons ? String(order.total_cartons) : "",
+          unitsPerCarton: order.qty_per_carton ? String(order.qty_per_carton) : "",
+          containerTypePacking: order.container_type || "20 or 40 Feet FCL",
+          netWtPerUnit: order.unit_net_weight ? String(order.unit_net_weight) : "",
+          netWtPerCarton: order.net_weight ? String(order.net_weight) : "",
+          grossWtPerCarton: order.gross_weight_per_carton ? String(order.gross_weight_per_carton) : "",
+          totalNetWeight: order.total_net_weight ? `${order.total_net_weight} Kg` : `${(parseFloat(order.total_cartons || 0) * parseFloat(order.net_weight || 0)).toFixed(2)} Kg`,
+          totalGrossWeight: order.total_gross_weight ? `${order.total_gross_weight} Kg` : `${(parseFloat(order.total_cartons || 0) * parseFloat(order.gross_weight_per_carton || 0)).toFixed(2)} Kg`,
+        });
+      } catch (err: any) {
+        console.error("Error loading invoice:", err.message);
+      }
+    }
+    fetchInvoice();
+  }, [id]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get("download") === "true" && form.invoiceNo !== "SGI/CI/2026/001") {
+      // Small timeout to allow DOM/render to complete before capturing PDF canvas
+      const timer = setTimeout(() => {
+        handleDownloadPDF();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [form.invoiceNo]);
 
   const set = (key: string, val: any) => setForm((f) => ({ ...f, [key]: val }));
 

@@ -31,27 +31,65 @@ export default function CreateInvoice() {
         if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
         const [leadsRes, productsRes] = await Promise.all([
-          fetch('/api/leads', { headers }),
-          fetch('/api/products', { headers })
+          fetch('/api/leads', { headers }).catch(err => {
+            console.warn("Leads fetch failed:", err);
+            return { ok: false, status: 500, text: () => Promise.resolve(err.message) } as Response;
+          }),
+          fetch('/api/products', { headers }).catch(err => {
+            console.warn("Products fetch failed:", err);
+            return { ok: false, status: 500, text: () => Promise.resolve(err.message) } as Response;
+          })
         ]);
 
+        let leadsData = [];
         if (leadsRes.ok) {
-          const leadsData = await leadsRes.json();
-          const activeLeads = leadsData.filter((l: any) => l.is_deleted !== true);
-          setLeadsList(activeLeads);
+          leadsData = await leadsRes.json();
         } else {
-          console.error("Failed to load leads:", await leadsRes.text());
+          console.warn("Failed to load leads from sync API, trying Supabase fallback...");
+          const { data, error } = await supabase
+            .from('leads')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (error) {
+            console.error("Supabase leads fallback error:", error);
+          } else {
+            leadsData = data || [];
+          }
         }
+        const activeLeads = leadsData.filter((l: any) => l.is_deleted !== true);
+        setLeadsList(activeLeads);
 
+        let productsData = [];
         if (productsRes.ok) {
-          const productsData = await productsRes.json();
-          const activeProducts = productsData.filter((p: any) => p.is_deleted !== true && p.company_id === profile.company_id);
-          setProductsList(activeProducts);
+          productsData = await productsRes.json();
         } else {
-          console.error("Failed to load products:", await productsRes.text());
+          console.warn("Failed to load products from sync API, trying Supabase fallback...");
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('company_id', profile.company_id);
+          if (error) {
+            console.error("Supabase products fallback error:", error);
+          } else {
+            productsData = data || [];
+          }
         }
-      } catch (err) {
+        const activeProducts = productsData.filter((p: any) => p.is_deleted !== true && p.company_id === profile.company_id);
+        
+        // Filter to only unique product names (case-insensitive and trimmed)
+        const uniqueProducts: any[] = [];
+        const seenNames = new Set<string>();
+        for (const prod of activeProducts) {
+          const nameKey = (prod.name || '').trim().toLowerCase();
+          if (nameKey && !seenNames.has(nameKey)) {
+            seenNames.add(nameKey);
+            uniqueProducts.push(prod);
+          }
+        }
+        setProductsList(uniqueProducts);
+      } catch (err: any) {
         console.error("Error loading order form data:", err);
+        toast.error("Failed to load form data: " + (err.message || err));
       }
     };
     loadData();
@@ -311,6 +349,27 @@ export default function CreateInvoice() {
       const headers: any = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
+      // Auto-create product if typed manually and doesn't exist
+      const resolvedProductName = product.trim();
+      const existingProduct = productsList.find(p => p.name.trim().toLowerCase() === resolvedProductName.toLowerCase());
+      if (!existingProduct && resolvedProductName) {
+        try {
+          await fetch('/api/products', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              name: resolvedProductName,
+              unit: unit || 'kg',
+              is_active: true,
+              company_id: profile!.company_id
+            })
+          });
+          toast.info(`Auto-created product "${resolvedProductName}" in catalog.`);
+        } catch (err) {
+          console.warn("Failed to auto-create product in catalog, proceeding anyway:", err);
+        }
+      }
+
       // Generate order number EXP-2026-XXX
       const year = new Date().getFullYear();
       const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
@@ -457,12 +516,15 @@ export default function CreateInvoice() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Product *</Label>
-              <Select value={product} onValueChange={setProduct}>
-                <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
-                <SelectContent>
-                  {productsList.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Input
+                value={product}
+                onChange={(e) => setProduct(e.target.value)}
+                placeholder="Type or select product..."
+                list="products-datalist"
+              />
+              <datalist id="products-datalist">
+                {productsList.map(p => <option key={p.id} value={p.name} />)}
+              </datalist>
             </div>
             
             <div className="grid grid-cols-2 gap-4">

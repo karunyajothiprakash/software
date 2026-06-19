@@ -11,6 +11,11 @@ interface PackingPDFData {
 export async function generatePackingListPDF(data: PackingPDFData) {
     const { packing, receiving, company } = data;
 
+    // Coerce numeric types that might come as strings from DB
+    packing.net_weight = Number(packing.net_weight || 0);
+    packing.gross_weight = Number(packing.gross_weight || 0);
+    packing.carton_count = Number(packing.carton_count || 0);
+
     const html = `
         <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 8.5in; margin: 0 auto; color: #000000;">
             <!-- Header -->
@@ -93,6 +98,11 @@ export async function generatePackingListPDF(data: PackingPDFData) {
 export async function generatePackingSlipPDF(data: PackingPDFData) {
     const { packing, receiving, company } = data;
 
+    // Coerce numeric types that might come as strings from DB
+    packing.net_weight = Number(packing.net_weight || 0);
+    packing.gross_weight = Number(packing.gross_weight || 0);
+    packing.carton_count = Number(packing.carton_count || 0);
+
     const html = `
         <div style="font-family: Arial, sans-serif; padding: 15px; max-width: 8.5in; color: #000000;">
             <!-- Header -->
@@ -162,6 +172,11 @@ export async function generatePackingSlipPDF(data: PackingPDFData) {
 // Generate Carton Labels PDF
 export async function generateCartonLabelsPDF(data: PackingPDFData) {
     const { packing, receiving, company } = data;
+
+    // Coerce numeric types that might come as strings from DB
+    packing.net_weight = Number(packing.net_weight || 0);
+    packing.gross_weight = Number(packing.gross_weight || 0);
+    packing.carton_count = Number(packing.carton_count || 0);
     const cartonCount = packing.carton_count;
 
     let labels = "";

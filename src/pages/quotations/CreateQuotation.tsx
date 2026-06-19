@@ -300,8 +300,21 @@ export default function CreateQuotation() {
           }
         }
 
-        if (productsRes.ok) setProductsList(await productsRes.json());
-        else console.error('Failed to load products', await productsRes.text());
+        if (productsRes.ok) {
+          const productsData = await productsRes.json();
+          const uniqueProducts: any[] = [];
+          const seenNames = new Set<string>();
+          for (const prod of productsData) {
+            const nameKey = (prod.name || '').trim().toLowerCase();
+            if (nameKey && !seenNames.has(nameKey)) {
+              seenNames.add(nameKey);
+              uniqueProducts.push(prod);
+            }
+          }
+          setProductsList(uniqueProducts);
+        } else {
+          console.error('Failed to load products', await productsRes.text());
+        }
 
         if (containersRes.ok) setContainerTypesList(await containersRes.json());
         else console.error('Failed to load container types', await containersRes.text());

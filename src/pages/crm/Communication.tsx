@@ -346,8 +346,10 @@ function Communication() {
         {/* Info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: isPast ? C.sub : C.text,
-              textDecoration: m.status === "Cancelled" ? "line-through" : "none" }}>{m.title}</div>
+            <div style={{
+              fontSize: 15, fontWeight: 600, color: isPast ? C.sub : C.text,
+              textDecoration: m.status === "Cancelled" ? "line-through" : "none"
+            }}>{m.title}</div>
             <Pill label={m.meeting_type} color={bc} />
             <Pill label={`${m.duration_minutes || 60}m`} color={C.muted} />
             {m.isToday && m.countdown && <Pill label={m.countdown} color={C.orange} />}
@@ -402,7 +404,7 @@ function Communication() {
           {/* Join button — always visible */}
           <button
             onClick={() => {
-              const url = m.meeting_link || `https://meet.zoho.in/${m.id.substring(0,8)}`;
+              const url = m.meeting_link || `https://meet.zoho.in/${m.id.substring(0, 8)}`;
               window.open(url, "_blank");
             }}
             style={{
@@ -656,7 +658,7 @@ function Communication() {
   );
 
   // ─── MAIN RENDER ──────────────────────────────────────────────────────────
-  const MAIN_TABS = [["calls", "📞 Call Logs"], ["email", "📧 Email Tracking"], ["whatsapp", "💬 WhatsApp"], ["meetings", "📅 Meetings"]];
+  const MAIN_TABS = [["calls", "📞 Call Logs"], ["meetings", "📅 Meetings"]];
 
   return (
     <div style={{ animation: "slideIn 0.3s ease" }}>
@@ -665,7 +667,7 @@ function Communication() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>Communication Management</h2>
-          <p style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>All channels: calls, email, WhatsApp, meetings in one place</p>
+          <p style={{ fontSize: 13, color: C.sub, marginTop: 4 }}>All channels: calls, meetings in one place</p>
         </div>
         {mainTab === "meetings" && (
           <button onClick={() => { setEditTarget(null); setScheduleType("Video Call"); setScheduleOpen(true); }}
@@ -712,44 +714,6 @@ function Communication() {
               ))}
             </tbody>
           </table>
-        </MutedCard>
-      )}
-
-      {/* ── Email Tracking ── */}
-      {mainTab === "email" && (
-        <MutedCard style={{ padding: 0 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                {["Date", "Subject", "To", "Status", "By"].map(h => (
-                  <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 11, color: C.muted, fontWeight: 600, letterSpacing: "0.08em" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {EMAILS.map((e, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
-                  <td style={{ padding: "10px 16px", fontSize: 12, color: C.sub }}>{e.date}</td>
-                  <td style={{ padding: "10px 16px", fontSize: 13, fontWeight: 500 }}>{e.subject}</td>
-                  <td style={{ padding: "10px 16px", fontSize: 11, fontFamily: "monospace", color: C.sub }}>{e.to}</td>
-                  <td style={{ padding: "10px 16px" }}><Pill label={e.status} color={e.status === "Replied" ? C.green : e.status === "Opened" ? C.blue : C.gold} /></td>
-                  <td style={{ padding: "10px 16px", fontSize: 12 }}>{e.by}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </MutedCard>
-      )}
-
-      {/* ── WhatsApp ── */}
-      {mainTab === "whatsapp" && (
-        <MutedCard>
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
-            <div style={{ fontWeight: 600, fontSize: 16, color: C.text, marginBottom: 8 }}>WhatsApp Business Integration</div>
-            <div style={{ fontSize: 13, color: C.sub, maxWidth: 400, margin: "0 auto 24px" }}>Connect your WhatsApp Business API to sync conversations, send templates, and track delivery directly from your CRM.</div>
-            <button style={{ background: C.accent, color: C.bg, border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Connect WhatsApp API</button>
-          </div>
         </MutedCard>
       )}
 

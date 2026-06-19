@@ -88,9 +88,9 @@ export default function PackingLists() {
           toast.success("Carton Labels generated");
           break;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating document:", error);
-      toast.error("Failed to generate document");
+      toast.error(`Failed to generate document: ${error.message || error}`);
     }
   };
 

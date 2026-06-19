@@ -21,6 +21,7 @@ type ProfileRow = {
   created_at: string;
 };
 
+// ✅ Removed: bd, marketing | Added: warehouse, shipment
 const ROLE_OPTIONS = [
   { slug: "admin", name: "Admin" },
   { slug: "manager", name: "Manager" },
@@ -29,10 +30,10 @@ const ROLE_OPTIONS = [
   { slug: "accounts", name: "Accounts" },
   { slug: "operations", name: "Operations" },
   { slug: "procurement", name: "Procurement" },
+  { slug: "warehouse", name: "Warehouse" },
+  { slug: "shipment", name: "Shipment" },
   { slug: "qc", name: "QC" },
   { slug: "bde", name: "BDE" },
-  { slug: "bd", name: "BD" },
-  { slug: "marketing", name: "Marketing" },
   { slug: "digital_marketing", name: "Digital Marketing" },
   { slug: "software_dev", name: "Software Dev" },
   { slug: "net_security", name: "Net & Security" },
@@ -83,7 +84,6 @@ export default function Approvals() {
             You do not have the required permissions to view or manage user approvals. Please contact your system administrator if you believe this is an error.
           </p>
         </div>
-
       </div>
     );
   }
@@ -153,8 +153,7 @@ export default function Approvals() {
       });
       if (!res.ok) throw new Error("Failed to change role");
       toast.success(`✅ ${r.full_name || r.email} role changed to ${role.toUpperCase()}`);
-      // Clear the selection and reload
-      setPendingRoleSel(p => { const n = {...p}; delete n[r.id]; return n; });
+      setPendingRoleSel(p => { const n = { ...p }; delete n[r.id]; return n; });
       load();
     } catch (error: any) {
       toast.error(error.message);
@@ -177,7 +176,11 @@ export default function Approvals() {
       </TableHeader>
       <TableBody>
         {list.length === 0 && (
-          <TableRow><TableCell colSpan={showActions ? 6 : 5} className="text-center text-sm text-muted-foreground py-8">No records</TableCell></TableRow>
+          <TableRow>
+            <TableCell colSpan={showActions ? 6 : 5} className="text-center text-sm text-muted-foreground py-8">
+              No records
+            </TableCell>
+          </TableRow>
         )}
         {list.map((r) => (
           <TableRow key={r.id}>
@@ -200,7 +203,9 @@ export default function Approvals() {
                     >
                       <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {ROLE_OPTIONS.map((rOpt) => <SelectItem key={rOpt.slug} value={rOpt.slug}>{rOpt.name}</SelectItem>)}
+                        {ROLE_OPTIONS.map((rOpt) => (
+                          <SelectItem key={rOpt.slug} value={rOpt.slug}>{rOpt.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <Button size="sm" onClick={() => approve(r)} disabled={busyId === r.id}>
@@ -236,7 +241,9 @@ export default function Approvals() {
             <TabsTrigger value="approved">Approved ({approved.length})</TabsTrigger>
             <TabsTrigger value="rejected">Rejected ({rejected.length})</TabsTrigger>
           </TabsList>
-          <TabsContent value="pending" className="erp-card p-2">{renderTable(pending, showColumns)}</TabsContent>
+          <TabsContent value="pending" className="erp-card p-2">
+            {renderTable(pending, showColumns)}
+          </TabsContent>
           <TabsContent value="approved" className="erp-card p-2">
             <Table>
               <TableHeader>
@@ -250,7 +257,11 @@ export default function Approvals() {
               </TableHeader>
               <TableBody>
                 {approved.length === 0 && (
-                  <TableRow><TableCell colSpan={showColumns ? 5 : 4} className="text-center text-sm text-muted-foreground py-8">No records</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={showColumns ? 5 : 4} className="text-center text-sm text-muted-foreground py-8">
+                      No records
+                    </TableCell>
+                  </TableRow>
                 )}
                 {approved.map((r) => (
                   <TableRow key={r.id}>
@@ -273,16 +284,18 @@ export default function Approvals() {
                                 <SelectValue placeholder="Select new role" />
                               </SelectTrigger>
                               <SelectContent>
-                                {ROLE_OPTIONS.map((rOpt) => <SelectItem key={rOpt.slug} value={rOpt.slug}>{rOpt.name}</SelectItem>)}
+                                {ROLE_OPTIONS.map((rOpt) => (
+                                  <SelectItem key={rOpt.slug} value={rOpt.slug}>{rOpt.name}</SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => changeRole(r)} 
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => changeRole(r)}
                               disabled={busyId === r.id || !pendingRoleSel[r.id]}
                             >
-                              <Check className="h-3.5 w-3.5 mr-1" /> 
+                              <Check className="h-3.5 w-3.5 mr-1" />
                               {pendingRoleSel[r.id] ? `Set ${pendingRoleSel[r.id].toUpperCase()}` : 'Change'}
                             </Button>
                           </div>
@@ -294,7 +307,9 @@ export default function Approvals() {
               </TableBody>
             </Table>
           </TabsContent>
-          <TabsContent value="rejected" className="erp-card p-2">{renderTable(rejected)}</TabsContent>
+          <TabsContent value="rejected" className="erp-card p-2">
+            {renderTable(rejected)}
+          </TabsContent>
         </Tabs>
       )}
     </div>

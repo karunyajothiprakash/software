@@ -32,15 +32,18 @@ export default function Maintenance() {
       // to prevent accidental permanent deletion. Use targeted archival/cleanup procedures instead.
       // NOTE: System audit tables (app_notifications, activity_logs, audit_logs, zoho_accounts, etc.) are intentionally excluded
       // to preserve audit trails and system configuration history. Use targeted archival/cleanup procedures instead.
-      const tablesToWipe = [
+      const tablesToHardDelete = [
         "export_containers",
+        "qc_inspections",
+        "inventory_movements",
+        "purchase_order_items"
+      ];
+
+      const tablesToSoftDelete = [
         "export_shipments",
         "export_orders",
         "quotations",
-        "qc_inspections",
-        "inventory_movements",
         "inventory_batches",
-        "purchase_order_items",
         "purchase_orders",
         "leads",
         "farmers",
@@ -49,8 +52,28 @@ export default function Maintenance() {
         "user_roles"
       ];
 
+      // 1. Hard-delete child transactional tables
+      for (const table of tablesToHardDelete) {
+        let query = supabase.from(table as any).delete();
+        
+        if (profile?.company_id) {
+          if (table !== "purchase_order_items") {
+            query = query.eq("company_id" as any, profile.company_id);
+          } else {
+            query = query.neq("id" as any, "00000000-0000-0000-0000-000000000000");
+          }
+        } else {
+          query = query.neq("id" as any, "00000000-0000-0000-0000-000000000000");
+        }
 
-      for (const table of tablesToWipe) {
+        const { error } = await query;
+        if (error) {
+          console.error(`Error hard-deleting data from ${table}:`, error);
+        }
+      }
+
+      // 2. Soft-delete parent/primary transactional tables
+      for (const table of tablesToSoftDelete) {
         let query = supabase.from(table as any).update({
           is_deleted: true,
           deleted_at: new Date().toISOString(),
@@ -62,8 +85,6 @@ export default function Maintenance() {
         } else if (table === "user_roles") {
           query = query.neq("user_id", profile?.id);
         } else {
-          // No-op where to target all if not filtered, but we need a filter for .update()
-          // eq("company_id", profile?.company_id) is better to limit to current company
           if (profile?.company_id) {
             query = query.eq("company_id" as any, profile.company_id);
           } else {

@@ -26,6 +26,13 @@ const pool = new Pool({
   database: process.env.PG_DATABASE || 'shastika_erp',
   password: process.env.PG_PASSWORD,
   port: parseInt(process.env.PG_PORT || '5432', 10),
+  connectionTimeoutMillis: 5000,   // fail fast if VPS unreachable
+  idleTimeoutMillis: 30000,
+  max: 10,
+});
+
+pool.on('error', (err) => {
+  console.error('❌ DB pool error:', err.message);
 });
 
 // Helper for single queries

@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, Receipt, Trash2 } from "lucide-react";
+import { Loader2, Plus, Receipt, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -130,7 +130,25 @@ export default function PurchaseOrdersListLive() {
                   <TableCell className="text-right font-medium">
                     {po.currency} {Number(po.total)?.toLocaleString()}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right flex justify-end gap-2">
+                    {po.status === 'approved' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-primary text-primary hover:bg-primary/10 h-8 px-2 text-xs"
+                        onClick={() => navigate(`/warehouse/receiving?po_id=${po.id}`)}
+                      >
+                        Receive
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-primary hover:bg-white/5"
+                      onClick={() => navigate(`/procurement/orders/edit/${po.id}`)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

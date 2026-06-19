@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 type POItem = {
   id: string;
   product: string;
+  productName?: string;
   quantity: number;
   unit: string;
   unit_price: number;
@@ -30,11 +31,12 @@ export default function CreatePOLive() {
 
   // Form
   const [supplierId, setSupplierId] = useState("");
+  const [supplierInput, setSupplierInput] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [notes, setNotes] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [items, setItems] = useState<POItem[]>([
-    { id: "1", product: "", quantity: 1, unit: "kg", unit_price: 0 }
+    { id: "1", product: "", productName: "", quantity: 1, unit: "kg", unit_price: 0 }
   ]);
 
   useEffect(() => {
@@ -55,7 +57,18 @@ export default function CreatePOLive() {
         const prodData = await prodRes.json();
 
         setSuppliers((supData || []).map((f: any) => ({ id: f.id, name: f.full_name })));
-        setProducts((prodData || []).map((p: any) => ({ id: p.id, name: p.name, unit: p.unit })));
+        
+        // Filter to unique product names (case-insensitive and trimmed)
+        const uniqueProducts: any[] = [];
+        const seenNames = new Set<string>();
+        for (const p of (prodData || [])) {
+          const nameKey = (p.name || '').trim().toLowerCase();
+          if (nameKey && !seenNames.has(nameKey)) {
+            seenNames.add(nameKey);
+            uniqueProducts.push({ id: p.id, name: p.name, unit: p.unit });
+          }
+        }
+        setProducts(uniqueProducts);
       } catch (err: any) {
         toast.error("Failed to load catalog data");
         console.error("Fetch error:", err);
@@ -69,7 +82,7 @@ export default function CreatePOLive() {
   const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
 
   const addItem = () => {
-    setItems([...items, { id: Math.random().toString(), product: "", quantity: 1, unit: "kg", unit_price: 0 }]);
+    setItems([...items, { id: Math.random().toString(), product: "", productName: "", quantity: 1, unit: "kg", unit_price: 0 }]);
   };
 
   const removeItem = (id: string) => {
@@ -96,19 +109,87 @@ export default function CreatePOLive() {
     if (!user?.id || !profile?.company_id) {
       return toast.error("Authentication error. Please refresh and try again.");
     }
-    if (!supplierId) return toast.error("Please select a supplier");
-    if (items.some(i => !i.product)) return toast.error("Select a product for all items");
+    const finalSupplierName = supplierInput.trim();
+    if (!finalSupplierName) return toast.error("Please provide a supplier");
+    if (items.some(i => !i.product && !i.productName)) return toast.error("Select or enter a product for all items");
 
     setSaving(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      // Step 1: Generate a professional PO number instantly
+      // 1. Resolve or create Farmer/Supplier on the fly
+      let resolvedSupplierId = supplierId;
+      if (!resolvedSupplierId && finalSupplierName) {
+        const existingSupplier = suppliers.find(s => s.name.trim().toLowerCase() === finalSupplierName.toLowerCase());
+        if (existingSupplier) {
+          resolvedSupplierId = existingSupplier.id;
+        } else {
+          const createRes = await fetch('/api/farmers', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${session?.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              company_id: profile.company_id,
+              full_name: finalSupplierName,
+              is_active: true
+            })
+          });
+          if (!createRes.ok) {
+            throw new Error(`Failed to auto-create supplier "${finalSupplierName}"`);
+          }
+          const newFarmer = await createRes.json();
+          resolvedSupplierId = newFarmer.id;
+          toast.info(`Auto-created supplier "${finalSupplierName}" in directory.`);
+        }
+      }
+
+      // 2. Resolve or create Products for each line item on the fly
+      const resolvedItems = [];
+      for (const item of items) {
+        let resolvedProductId = item.product;
+        const finalProdName = (item.productName || '').trim();
+
+        if (!resolvedProductId && finalProdName) {
+          const existingProduct = products.find(p => p.name.trim().toLowerCase() === finalProdName.toLowerCase());
+          if (existingProduct) {
+            resolvedProductId = existingProduct.id;
+          } else {
+            const createRes = await fetch('/api/products', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${session?.access_token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: finalProdName,
+                unit: item.unit || 'kg',
+                is_active: true,
+                company_id: profile.company_id
+              })
+            });
+            if (!createRes.ok) {
+              throw new Error(`Failed to auto-create product "${finalProdName}"`);
+            }
+            const newProduct = await createRes.json();
+            resolvedProductId = newProduct.id;
+            toast.info(`Auto-created product "${finalProdName}" in catalog.`);
+          }
+        }
+        resolvedItems.push({
+          product_id: resolvedProductId,
+          quantity: item.quantity,
+          unit_price: item.unit_price
+        });
+      }
+
+      // Step 3: Generate a professional PO number instantly
       const timestamp = new Date().getTime().toString().slice(-4);
       const year = new Date().getFullYear();
       const generatedPoNumber = `PO-${year}-${timestamp}`;
 
-      // Step 2: Create the PO header and items via POST
+      // Step 4: Create the PO header and items via POST
       const res = await fetch('/api/purchase_orders', {
         method: 'POST',
         headers: {
@@ -118,7 +199,7 @@ export default function CreatePOLive() {
         body: JSON.stringify({
           po_number: generatedPoNumber,
           company_id: profile.company_id,
-          farmer_id: supplierId,
+          farmer_id: resolvedSupplierId,
           status: status === 'draft' ? 'draft' : 'approved',
           expected_delivery: expectedDate || null,
           total: totalAmount,
@@ -127,11 +208,7 @@ export default function CreatePOLive() {
           notes,
           created_by: user.id,
           order_date: new Date().toISOString().split('T')[0],
-          items: items.map(i => ({
-            product_id: i.product,
-            quantity: i.quantity,
-            unit_price: i.unit_price
-          }))
+          items: resolvedItems
         })
       });
 
@@ -199,16 +276,28 @@ export default function CreatePOLive() {
                   {items.map((item, index) => (
                     <TableRow key={item.id} className="group border-b border-white/5 hover:bg-white/[0.02] transition-colors">
                       <TableCell className="pl-6 py-4">
-                        <Select value={item.product} onValueChange={(val) => updateItem(item.id, "product", val)}>
-                          <SelectTrigger className="border-none bg-transparent hover:bg-white/5 h-8 focus:ring-1 focus:ring-primary/50 transition-colors">
-                            <SelectValue placeholder="Select product..." />
-                          </SelectTrigger>
-                          <SelectContent className="bg-card border-white/10 max-h-[200px]">
-                            {products.map(p => (
-                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Input
+                          value={item.productName || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const prod = products.find(p => p.name.trim().toLowerCase() === val.trim().toLowerCase());
+                            updateItem(item.id, "productName", val);
+                            if (prod) {
+                              updateItem(item.id, "product", prod.id);
+                              updateItem(item.id, "unit", prod.unit || "kg");
+                            } else {
+                              updateItem(item.id, "product", "");
+                            }
+                          }}
+                          placeholder="Type or select product..."
+                          list={`products-datalist-${item.id}`}
+                          className="border-none bg-transparent hover:bg-white/5 h-8 focus:ring-1 focus:ring-primary/50 transition-colors"
+                        />
+                        <datalist id={`products-datalist-${item.id}`}>
+                          {products.map(p => (
+                            <option key={p.id} value={p.name} />
+                          ))}
+                        </datalist>
                       </TableCell>
                       <TableCell className="py-4">
                         <Input
@@ -295,16 +384,27 @@ export default function CreatePOLive() {
             <CardContent className="space-y-6 p-6">
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Supplier *</Label>
-                <Select value={supplierId} onValueChange={setSupplierId}>
-                  <SelectTrigger className="bg-white/5 border-white/10 hover:border-primary/50 transition-colors">
-                    <SelectValue placeholder="Select Supplier" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-white/10">
-                    {suppliers.map(s => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  value={supplierInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSupplierInput(val);
+                    const found = suppliers.find(s => s.name.trim().toLowerCase() === val.trim().toLowerCase());
+                    if (found) {
+                      setSupplierId(found.id);
+                    } else {
+                      setSupplierId("");
+                    }
+                  }}
+                  placeholder="Type or select Supplier..."
+                  list="suppliers-datalist"
+                  className="bg-white/5 border-white/10 hover:border-primary/50 transition-colors"
+                />
+                <datalist id="suppliers-datalist">
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.name} />
+                  ))}
+                </datalist>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Loader2, Package, Trash2 } from "lucide-react";
+import { Plus, Loader2, Package, Trash2, Edit } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,10 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type ExportShipment = {
   id: string;
@@ -27,6 +31,57 @@ export default function ShipmentsList() {
   const { profile } = useAuth();
   const [shipments, setShipments] = useState<ExportShipment[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Edit Shipment State
+  const [editingShipment, setEditingShipment] = useState<ExportShipment | null>(null);
+  const [carrier, setCarrier] = useState("");
+  const [originPort, setOriginPort] = useState("");
+  const [destinationPort, setDestinationPort] = useState("");
+  const [eta, setEta] = useState("");
+  const [status, setStatus] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleOpenEdit = (e: React.MouseEvent, ship: ExportShipment) => {
+    e.stopPropagation();
+    setEditingShipment(ship);
+    setCarrier(ship.carrier || "");
+    setOriginPort(ship.origin_port || "");
+    setDestinationPort(ship.destination_port || "");
+    setEta(ship.eta ? ship.eta.split('T')[0] : "");
+    setStatus(ship.status || "");
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingShipment) return;
+    setIsSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      const res = await fetch(`/api/finance/export_shipments/${editingShipment.id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          carrier,
+          origin_port: originPort,
+          destination_port: destinationPort,
+          eta: eta ? new Date(eta).toISOString() : null,
+          status
+        })
+      });
+
+      if (!res.ok) throw new Error(await res.text() || "Failed to update shipment");
+
+      toast.success("Shipment updated successfully!");
+      setEditingShipment(null);
+      fetchShipments();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update shipment");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const fetchShipments = async () => {
     try {
@@ -130,19 +185,79 @@ export default function ShipmentsList() {
               key: "actions", 
               header: "", 
               render: (r) => (
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                  onClick={(e) => handleDelete(e, r.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                    onClick={(e) => handleOpenEdit(e, r)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    onClick={(e) => handleDelete(e, r.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               ) 
             },
           ]}
         />
 
+      )}
+
+      {editingShipment && (
+        <Dialog open={!!editingShipment} onOpenChange={(open) => !open && setEditingShipment(null)}>
+          <DialogContent className="max-w-md bg-card border-border text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-primary">Edit Shipment {editingShipment.shipment_number}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4 text-sm">
+              <div className="space-y-1">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Shipping Line / Carrier</Label>
+                <Input value={carrier} onChange={e => setCarrier(e.target.value)} placeholder="e.g. MSC, Maersk" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Port of Loading</Label>
+                <Input value={originPort} onChange={e => setOriginPort(e.target.value)} placeholder="e.g. Nhava Sheva" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Port of Discharge</Label>
+                <Input value={destinationPort} onChange={e => setDestinationPort(e.target.value)} placeholder="e.g. Jebel Ali" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">ETA (Estimated Arrival)</Label>
+                <Input type="date" value={eta} onChange={e => setEta(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Status</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-white/10 text-white">
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Shipped">Shipped</SelectItem>
+                    <SelectItem value="Delivered">Delivered</SelectItem>
+                    <SelectItem value="Cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setEditingShipment(null)} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

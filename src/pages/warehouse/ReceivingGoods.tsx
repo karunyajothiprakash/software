@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
     ArrowRight,
     Truck,
@@ -136,6 +137,58 @@ export default function ReceivingGoods() {
         });
     }, [dbBatches, products, suppliers]);
 
+    // Edit Batch State
+    const [editingBatch, setEditingBatch] = useState<any | null>(null);
+    const [editReceivedQty, setEditReceivedQty] = useState("");
+    const [editStatus, setEditStatus] = useState("");
+    const [editNotes, setEditNotes] = useState("");
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    const handleOpenEdit = (stock: any) => {
+        const batch = dbBatches.find((b: any) => b.id === stock.id);
+        if (batch) {
+            setEditingBatch(batch);
+            setEditReceivedQty(String(batch.quantity_kg || ""));
+            setEditStatus(batch.status === 'approved' ? 'pass' : 'rejected');
+            setEditNotes(batch.damaged_notes || "");
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingBatch) return;
+        setIsSavingEdit(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`/api/inventory/inventory_batches/${editingBatch.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session?.access_token}`
+                },
+                body: JSON.stringify({
+                    quantity_kg: Number(editReceivedQty) || 0,
+                    quantity_remaining_kg: Number(editReceivedQty) || 0,
+                    status: editStatus === 'pass' ? 'approved' : 'pending_qc',
+                    is_export_ready: editStatus === 'pass',
+                    damaged_notes: editNotes
+                })
+            });
+
+            if (!res.ok) throw new Error(await res.text() || "Failed to update batch");
+
+            toast.success("Stock entry updated successfully!");
+            setEditingBatch(null);
+            queryClient.invalidateQueries({ queryKey: ["warehouse-received-batches"] });
+            queryClient.invalidateQueries({ queryKey: ["warehouse-inventory"] });
+            queryClient.invalidateQueries({ queryKey: ["inventory_batches"] });
+            queryClient.invalidateQueries({ queryKey: ["warehouse-stock"] });
+        } catch (err: any) {
+            toast.error(err.message || "Failed to update stock entry");
+        } finally {
+            setIsSavingEdit(false);
+        }
+    };
+
     const [currentStage, setCurrentStage] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -147,6 +200,7 @@ export default function ReceivingGoods() {
         supplierId: "",
         supplierInfo: "",
         productId: "",
+        productName: "",
         warehouseId: "",
         expectedQty: "",
         receivedQty: "",
@@ -176,10 +230,19 @@ export default function ReceivingGoods() {
                 };
             }
             if (field === "supplierInfo") {
+                const found = suppliers.find((s: any) => s.full_name.trim().toLowerCase() === stringValue.trim().toLowerCase());
                 return {
                     ...prev,
-                    supplierId: "",
+                    supplierId: found ? String(found.id) : "",
                     supplierInfo: value,
+                };
+            }
+            if (field === "productName") {
+                const found = uniqueProducts.find((p: any) => p.name.trim().toLowerCase() === stringValue.trim().toLowerCase());
+                return {
+                    ...prev,
+                    productId: found ? String(found.id) : "",
+                    productName: value,
                 };
             }
             if (field === "productId" || field === "warehouseId") {
@@ -244,7 +307,7 @@ export default function ReceivingGoods() {
                 toast.error("Select a supplier or enter supplier details to continue.");
                 return;
             }
-            if (!formData.productId) {
+            if (!formData.productId && !formData.productName) {
                 toast.error("Select a product for this receiving entry.");
                 return;
             }
@@ -307,7 +370,7 @@ export default function ReceivingGoods() {
                     throw new Error('Unable to determine company association for this user.');
                 }
 
-                if (!formData.productId || !formData.warehouseId) {
+                if ((!formData.productId && !formData.productName) || !formData.warehouseId) {
                     toast.error("Please select product and warehouse before confirming.");
                     setIsSubmitting(false);
                     return;
@@ -317,9 +380,75 @@ export default function ReceivingGoods() {
                 const status = formData.qualityStatus === 'pass' ? 'approved' : 'pending_qc';
                 const isExportReady = formData.qualityStatus === 'pass';
 
-                // If the selected product is a fallback (not in DB), create it first
+                // 1. Resolve or create Farmer/Supplier on the fly
+                let resolvedFarmerId = formData.supplierId;
+                if (!resolvedFarmerId && formData.supplierInfo) {
+                    const typedName = formData.supplierInfo.split(" — ")[0].trim();
+                    const existingSupplier = suppliers.find((s: any) => s.full_name.trim().toLowerCase() === typedName.toLowerCase());
+                    if (existingSupplier) {
+                        resolvedFarmerId = existingSupplier.id;
+                    } else {
+                        const { data: { session: currentSession } } = await supabase.auth.getSession();
+                        const createRes = await fetch('/api/farmers', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${currentSession?.access_token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                company_id,
+                                full_name: typedName,
+                                is_active: true,
+                            })
+                        });
+                        
+                        if (!createRes.ok) {
+                            console.error("Failed to auto-create farmer:", await createRes.text());
+                            toast.error(`Failed to create supplier "${typedName}".`);
+                            setIsSubmitting(false);
+                            return;
+                        }
+                        const newFarmer = await createRes.json();
+                        resolvedFarmerId = newFarmer.id;
+                        toast.info(`Auto-created supplier "${typedName}" in your directory.`);
+                        queryClient.invalidateQueries({ queryKey: ["warehouse-suppliers"] });
+                    }
+                }
+
+                // 2. Resolve or create Product on the fly
                 let resolvedProductId = formData.productId;
-                if (resolvedProductId.startsWith('fallback-product-')) {
+                if (!resolvedProductId && formData.productName) {
+                    const existingProduct = products.find((p: any) => p.name.trim().toLowerCase() === formData.productName.trim().toLowerCase());
+                    if (existingProduct) {
+                        resolvedProductId = existingProduct.id;
+                    } else {
+                        const { data: { session: currentSession } } = await supabase.auth.getSession();
+                        const createRes = await fetch('/api/inventory/products', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${currentSession?.access_token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                name: formData.productName.trim(),
+                                unit: 'kg',
+                                is_active: true,
+                                company_id,
+                            })
+                        });
+                        
+                        if (!createRes.ok) {
+                            console.error("Failed to auto-create product:", await createRes.text());
+                            toast.error(`Failed to create product "${formData.productName}".`);
+                            setIsSubmitting(false);
+                            return;
+                        }
+                        const newProduct = await createRes.json();
+                        resolvedProductId = newProduct.id;
+                        toast.info(`Auto-created product "${formData.productName}" in your catalog.`);
+                        queryClient.invalidateQueries({ queryKey: ["warehouse-products"] });
+                    }
+                } else if (resolvedProductId.startsWith('fallback-product-')) {
                     const fallbackProduct = uniqueProducts.find((p: any) => p.id === resolvedProductId);
                     if (!fallbackProduct) {
                         toast.error("Selected product not found. Please re-select.");
@@ -365,6 +494,7 @@ export default function ReceivingGoods() {
                         lot_number: formData.batchNumber,
                         product_id: resolvedProductId,
                         warehouse_id: formData.warehouseId,
+                        farmer_id: resolvedFarmerId || null,
                         quantity_kg: quantityValue,
                         quantity_remaining_kg: quantityValue,
                         status,
@@ -382,7 +512,7 @@ export default function ReceivingGoods() {
 
                 // Update warehouse stock summary if the table exists
                 try {
-                    const productName = selectedProduct?.name || '';
+                    const productName = formData.productName || selectedProduct?.name || '';
                     const { data: existingStock, error: stockError } = await supabase
                         .from('warehouse_stock')
                         .select('id, quantity, unit')
@@ -405,7 +535,7 @@ export default function ReceivingGoods() {
                     } else {
                         await supabase.from('warehouse_stock').insert({
                             warehouse_id: formData.warehouseId,
-                            product_name: selectedProduct?.name || '',
+                            product_name: productName,
                             quantity: quantityValue,
                             unit: selectedProduct?.unit || 'kg',
                             last_updated: new Date().toISOString(),
@@ -431,6 +561,7 @@ export default function ReceivingGoods() {
                         supplierId: "",
                         supplierInfo: "",
                         productId: "",
+                        productName: "",
                         warehouseId: "",
                         expectedQty: "",
                         receivedQty: "",
@@ -561,33 +692,35 @@ export default function ReceivingGoods() {
 
                                     <div className="space-y-4">
                                         <Label>Supplier</Label>
-                                        <Select value={formData.supplierId || undefined} onValueChange={(value) => handleInputChange("supplierId", value)}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder={suppliersLoading ? "Loading suppliers..." : "Select supplier"} />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {suppliers.length > 0 ? suppliers.map((supplier: any) => (
-                                                        <SelectItem key={supplier.id} value={String(supplier.id)}>{supplier.full_name}</SelectItem>
-                                                )) : null}
-                                            </SelectContent>
-                                        </Select>
-                                        <p className="text-xs text-muted-foreground">Choose an existing farmer/supplier or enter supplier details manually below.</p>
+                                        <Input
+                                            value={formData.supplierInfo}
+                                            onChange={(e) => handleInputChange("supplierInfo", e.target.value)}
+                                            placeholder="Type or select supplier..."
+                                            list="suppliers-list"
+                                            className="mt-1.5"
+                                        />
+                                        <datalist id="suppliers-list">
+                                            {suppliers.map((supplier: any) => (
+                                                <option key={supplier.id} value={supplier.full_name} />
+                                            ))}
+                                        </datalist>
+                                        <p className="text-xs text-muted-foreground">Choose an existing farmer/supplier or type to enter supplier details manually.</p>
                                     </div>
 
                                     <div className="space-y-4">
                                         <Label>Product</Label>
-                                        <Select value={formData.productId || undefined} onValueChange={(value) => handleInputChange("productId", value)}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder={productsLoading ? "Loading products..." : "Select product"} />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                    {uniqueProducts.map((product: any) => (
-                                                <SelectItem key={product.id} value={String(product.id)}>
-                                                {product.name} {product.grade ? `- ${product.grade}` : ''}
-                                            </SelectItem>
-                                        ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <Input
+                                            value={formData.productName || ""}
+                                            onChange={(e) => handleInputChange("productName", e.target.value)}
+                                            placeholder="Type or select product..."
+                                            list="products-list"
+                                            className="mt-1.5"
+                                        />
+                                        <datalist id="products-list">
+                                            {uniqueProducts.map((product: any) => (
+                                                <option key={product.id} value={product.name} />
+                                            ))}
+                                        </datalist>
                                         <p className="text-xs text-muted-foreground">Select the product batch being received.</p>
                                     </div>
 
@@ -762,7 +895,7 @@ export default function ReceivingGoods() {
                                         <ul className="space-y-2 text-sm">
                                             <li className="flex justify-between"><span className="text-muted-foreground">GRN:</span> <strong>{formData.grn}</strong></li>
                                             <li className="flex justify-between"><span className="text-muted-foreground">Supplier:</span> <strong>{selectedSupplier?.full_name || formData.supplierInfo || 'Not specified'}</strong></li>
-                                            <li className="flex justify-between"><span className="text-muted-foreground">Product:</span> <strong>{selectedProduct?.name || 'Not selected'}</strong></li>
+                                            <li className="flex justify-between"><span className="text-muted-foreground">Product:</span> <strong>{formData.productName || selectedProduct?.name || 'Not selected'}</strong></li>
                                             <li className="flex justify-between"><span className="text-muted-foreground">Warehouse:</span> <strong>{selectedWarehouse?.name || 'Not selected'}</strong></li>
                                             <li className="flex justify-between"><span className="text-muted-foreground">Quantity:</span> <strong>{formData.receivedQty || '0'} kg</strong></li>
                                             <li className="flex justify-between"><span className="text-muted-foreground">Quality:</span> <strong>{formData.qualityStatus === 'pass' ? 'Passed' : formData.qualityStatus || 'Pending'}</strong></li>
@@ -826,6 +959,7 @@ export default function ReceivingGoods() {
                                         <th className="px-6 py-4 font-semibold">Supplier</th>
                                         <th className="px-6 py-4 font-semibold">Quantity</th>
                                         <th className="px-6 py-4 font-semibold">Quality</th>
+                                        <th className="px-6 py-4 font-semibold text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border">
@@ -842,6 +976,16 @@ export default function ReceivingGoods() {
                                                     {stock.qualityStatus === 'pass' ? 'Passed' : stock.qualityStatus || 'Pending'}
                                                 </span>
                                             </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleOpenEdit(stock)}
+                                                    className="text-primary hover:bg-primary/10 h-8"
+                                                >
+                                                    Edit
+                                                </Button>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -849,6 +993,60 @@ export default function ReceivingGoods() {
                         </div>
                     )}
                 </Card>
+            )}
+
+            {editingBatch && (
+                <Dialog open={!!editingBatch} onOpenChange={(open) => !open && setEditingBatch(null)}>
+                    <DialogContent className="max-w-md bg-card border-border text-white">
+                        <DialogHeader>
+                            <DialogTitle className="text-xl font-bold text-primary">Edit Stock Entry</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4 text-sm">
+                            <div className="space-y-1">
+                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Batch Number</Label>
+                                <Input value={editingBatch.lot_number} readOnly className="bg-muted font-mono" />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Actual Received Quantity (kg)</Label>
+                                <Input
+                                    type="number"
+                                    value={editReceivedQty}
+                                    onChange={(e) => setEditReceivedQty(e.target.value)}
+                                    placeholder="Enter physical count"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Quality Status</Label>
+                                <Select value={editStatus} onValueChange={setEditStatus}>
+                                    <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-card border-white/10 text-white">
+                                        <SelectItem value="pass">Passed - Good Condition</SelectItem>
+                                        <SelectItem value="rejected">Rejected / Pending QC</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Notes</Label>
+                                <Textarea
+                                    value={editNotes}
+                                    onChange={(e) => setEditNotes(e.target.value)}
+                                    placeholder="Damaged notes, condition, driver info..."
+                                    rows={3}
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter className="flex justify-end gap-2 pt-4">
+                            <Button variant="outline" onClick={() => setEditingBatch(null)} disabled={isSavingEdit}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
+                                {isSavingEdit ? "Saving..." : "Save Changes"}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             )}
         </div >
     );

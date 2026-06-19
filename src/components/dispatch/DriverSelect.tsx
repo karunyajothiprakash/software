@@ -52,7 +52,7 @@ const DriverSelect: React.FC<Props> = ({ onSelect }) => {
 
   const handleAddDriver = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newDriver.name) {
+    if (!newDriver.driver_name) {
       toast.error('Driver name is required');
       return;
     }

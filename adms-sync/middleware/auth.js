@@ -20,6 +20,11 @@ if (envPath) {
   require('dotenv').config();
 }
 
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -33,18 +38,41 @@ const requireAuth = async (req, res, next) => {
   }
 
   const token = authHeader.split(' ')[1];
-  try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) {
-      console.log(`[DEBUG] requireAuth: Invalid token for ${req.method} ${req.url}:`, error?.message);
-      return res.status(401).json({ error: "Invalid or expired token" });
+  let user = null;
+  let lastError = null;
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const { data, error } = await supabase.auth.getUser(token);
+      if (error) {
+        lastError = error;
+        // Do not retry on definite client auth errors
+        if (error.status === 400 || error.status === 401 || error.message?.includes('invalid') || error.message?.includes('expired')) {
+          break;
+        }
+        console.warn(`[requireAuth] Attempt ${attempt}/${maxAttempts} returned error:`, error.message);
+      } else if (data?.user) {
+        user = data.user;
+        break;
+      }
+    } catch (err) {
+      lastError = err;
+      console.warn(`[requireAuth] Attempt ${attempt}/${maxAttempts} connection failed:`, err.message);
     }
-    req.user = { sub: user.id, ...user };
-    next();
-  } catch (err) {
-    console.log(`[DEBUG] requireAuth: Exception during token verification:`, err.message);
+
+    if (attempt < maxAttempts && !user) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  }
+
+  if (!user) {
+    console.log(`[DEBUG] requireAuth: Token check failed for ${req.method} ${req.url}:`, lastError?.message || 'User not found');
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+
+  req.user = { sub: user.id, ...user };
+  next();
 };
 
 module.exports = { requireAuth };

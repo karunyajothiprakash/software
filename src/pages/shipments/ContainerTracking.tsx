@@ -6,67 +6,124 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ContainerTracking() {
+  const { profile } = useAuth();
   const [containers, setContainers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!profile?.company_id) return;
+
     const fetchContainers = async () => {
       try {
-        const { data, error } = await supabase
-          .from("export_containers")
-          .select(`
-            *,
-            export_shipments (
-              shipment_number,
-              origin_port,
-              destination_port,
-              status
-            )
-          `)
-          .order('created_at', { ascending: false });
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
 
-        if (error) throw error;
+        const [containersRes, shipmentsRes] = await Promise.all([
+          fetch(`/api/finance/export_containers?company_id=${profile.company_id}`, { headers }),
+          fetch(`/api/finance/export_shipments?company_id=${profile.company_id}`, { headers })
+        ]);
 
-        // Map database records to the table format
-        const formattedData = (data || []).map(c => ({
-          dbId: c.id, // Keep original DB ID for updates
-          id: c.container_number,
-          shipmentId: c.export_shipments?.shipment_number || "Unknown",
-          type: c.container_type,
-          weight: c.weight_kg,
-          status: c.status || "Pending",
-          location: c.export_shipments?.status === "Delivered" 
-            ? c.export_shipments?.destination_port 
-            : c.export_shipments?.status === "In Transit" 
-              ? "At sea" 
-              : c.export_shipments?.origin_port || "Unknown Location",
-        }));
+        if (!containersRes.ok || !shipmentsRes.ok) {
+          throw new Error("Failed to fetch containers or shipments from API");
+        }
+
+        const containersData = await containersRes.json();
+        const shipmentsData = await shipmentsRes.json();
+
+        const formattedData = (containersData || []).map((c: any) => {
+          const shipment = (shipmentsData || []).find((s: any) => s.id === c.shipment_id);
+          return {
+            dbId: c.id,
+            id: c.container_number,
+            shipmentId: shipment?.shipment_number || "Unknown",
+            type: c.container_type,
+            weight: c.weight_kg,
+            status: c.status || "Pending",
+            location: shipment?.status === "Delivered" 
+              ? shipment?.destination_port 
+              : shipment?.status === "In Transit" 
+                ? "At sea" 
+                : shipment?.origin_port || "Unknown Location",
+          };
+        });
 
         setContainers(formattedData);
       } catch (err: any) {
-        toast.error("Failed to load containers");
+        console.error("Containers API load failed, trying Supabase fallback...", err);
+        try {
+          const { data, error } = await supabase
+            .from("export_containers")
+            .select(`
+              *,
+              export_shipments (
+                shipment_number,
+                origin_port,
+                destination_port,
+                status
+              )
+            `)
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+
+          const formattedData = (data || []).map(c => ({
+            dbId: c.id,
+            id: c.container_number,
+            shipmentId: c.export_shipments?.shipment_number || "Unknown",
+            type: c.container_type,
+            weight: c.weight_kg,
+            status: c.status || "Pending",
+            location: c.export_shipments?.status === "Delivered" 
+              ? c.export_shipments?.destination_port 
+              : c.export_shipments?.status === "In Transit" 
+                ? "At sea" 
+                : c.export_shipments?.origin_port || "Unknown Location",
+          }));
+
+          setContainers(formattedData);
+        } catch (supErr: any) {
+          console.error("Supabase fallback error:", supErr);
+          toast.error("Failed to load containers: " + (supErr.message || supErr));
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchContainers();
-  }, []);
+  }, [profile?.company_id]);
 
   const updateContainer = async (id: string, field: string, value: any) => {
     try {
-      const { error } = await supabase
-        .from("export_containers")
-        .update({ [field]: value })
-        .eq("id", id);
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: any = { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`
+      };
+      
+      const res = await fetch(`/api/finance/export_containers/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ [field]: value })
+      });
+
+      if (!res.ok) {
+        // Fallback to direct supabase update
+        const { error } = await supabase
+          .from("export_containers")
+          .update({ [field]: value })
+          .eq("id", id);
+        if (error) throw error;
+      }
       
       toast.success(`Container ${field} updated`);
       setContainers(prev => prev.map(c => c.dbId === id ? { ...c, [field === 'status' ? 'status' : 'weight']: value } : c));
     } catch (err: any) {
-      toast.error("Failed to update container");
+      toast.error("Failed to update container: " + (err.message || err));
     }
   };
 

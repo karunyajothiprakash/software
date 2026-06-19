@@ -76,7 +76,13 @@ CREATE TABLE IF NOT EXISTS public.expiry_monitoring (
     company_id UUID,
     is_deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    unit TEXT DEFAULT 'kg',
+    manufacture_date DATE,
+    warehouse TEXT,
+    notes TEXT,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    deleted_by UUID
 );
 
 -- 6. receiving_goods (in case it is needed later)

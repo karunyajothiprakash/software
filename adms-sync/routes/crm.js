@@ -422,12 +422,21 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
 router.post('/:id/follow-ups', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { company_name, contact_name, follow_up_date, note, assigned_to } = req.body;
+    const { 
+      company_name, contact_name, follow_up_date, reminder_time, note, assigned_to,
+      business_category, product_type, country, mobile, email, website
+    } = req.body;
     
     await db.query(
-      `INSERT INTO follow_ups (lead_id, company_name, contact_name, follow_up_date, note, assigned_to, is_notified) 
-       VALUES ($1, $2, $3, $4, $5, $6, false)`,
-      [id, company_name, contact_name, follow_up_date, note, assigned_to]
+      `INSERT INTO follow_ups (
+        lead_id, company_name, contact_name, follow_up_date, reminder_time, note, assigned_to, is_notified,
+        business_category, product_type, country, mobile, email, website
+      ) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8, $9, $10, $11, $12, $13)`,
+      [
+        id, company_name, contact_name, follow_up_date, reminder_time || null, note, assigned_to,
+        business_category, product_type, country, mobile, email, website
+      ]
     );
     
     await db.query('UPDATE leads SET assigned_to = $1 WHERE id = $2', [assigned_to, id]);

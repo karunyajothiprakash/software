@@ -119,7 +119,18 @@ export default function EditQuotation() {
         ]);
 
         if (leadsRes.data) setLeadsList(leadsRes.data);
-        if (productsRes.data) setProductsList(productsRes.data);
+        if (productsRes.data) {
+          const uniqueProducts: any[] = [];
+          const seenNames = new Set<string>();
+          for (const prod of productsRes.data) {
+            const nameKey = (prod.name || '').trim().toLowerCase();
+            if (nameKey && !seenNames.has(nameKey)) {
+              seenNames.add(nameKey);
+              uniqueProducts.push(prod);
+            }
+          }
+          setProductsList(uniqueProducts);
+        }
         if (containersRes.data) setContainerTypesList(containersRes.data);
         if (pkgsRes.data) setPackagingTypesList(pkgsRes.data);
 

@@ -1,6 +1,11 @@
 const WebSocket = require('ws');
 globalThis.WebSocket = WebSocket;
 
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 // Polyfill fetch for older Node.js versions
 if (!globalThis.fetch) {
   globalThis.fetch = require('node-fetch');
@@ -70,6 +75,54 @@ app.use((req, res, next) => {
   next();
 });
 
+// --- Vehicles & Drivers Top Level APIs ---
+app.get('/api/vehicles', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT id, vehicle_number, vehicle_type FROM vehicles WHERE is_active = true AND is_deleted IS NOT TRUE ORDER BY vehicle_number');
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /api/vehicles error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch vehicles' });
+  }
+});
+
+app.post('/api/vehicles', async (req, res) => {
+  try {
+    const { vehicle_number, vehicle_type } = req.body;
+    if (!vehicle_number) return res.status(400).json({ error: 'vehicle_number is required' });
+    const insertQuery = `INSERT INTO vehicles (vehicle_number, vehicle_type, is_active) VALUES ($1, $2, true) RETURNING id, vehicle_number, vehicle_type`;
+    const { rows } = await db.query(insertQuery, [vehicle_number, vehicle_type || null]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('POST /api/vehicles error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to create vehicle' });
+  }
+});
+
+app.get('/api/drivers', async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT id, driver_name, COALESCE(license_number, '') AS license_number FROM drivers WHERE is_active = true AND is_deleted IS NOT TRUE ORDER BY driver_name");
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /api/drivers error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch drivers' });
+  }
+});
+
+app.post('/api/drivers', async (req, res) => {
+  try {
+    const driver_name = req.body.driver_name || req.body.name || req.body.driverName;
+    const license_number = req.body.license_number || req.body.licenseNumber || null;
+    if (!driver_name) return res.status(400).json({ error: 'driver_name is required' });
+    const insertQuery = `INSERT INTO drivers (driver_name, license_number, is_active) VALUES ($1, $2, true) RETURNING id, driver_name, license_number`;
+    const { rows } = await db.query(insertQuery, [driver_name, license_number]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('POST /api/drivers error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to create driver' });
+  }
+});
+
 // --- Mount API Routes ---
 const attendanceRoutes = require('./routes/attendance');
 const employeesRoutes = require('./routes/employees');
@@ -124,6 +177,8 @@ app.use('/api/security', securityRoutes);
 app.use('/api/procurement', procurementRoutes);
 app.use('/api/purchase_orders', purchaseOrdersRoutes);
 app.use('/api/documents', documentsRoutes);
+
+
 
 // Temporary top-level debug endpoint to fetch converted leads without router/auth issues
 app.get('/api/leads/converted/debug2', async (req, res) => {

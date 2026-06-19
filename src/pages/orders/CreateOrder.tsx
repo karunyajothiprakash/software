@@ -46,7 +46,18 @@ export default function CreateOrder() {
         if (productsRes.ok) {
           const productsData = await productsRes.json();
           const activeProducts = productsData.filter((p: any) => p.is_deleted !== true && p.company_id === profile.company_id);
-          setProductsList(activeProducts);
+          
+          // Filter to only unique product names (case-insensitive and trimmed)
+          const uniqueProducts: any[] = [];
+          const seenNames = new Set<string>();
+          for (const prod of activeProducts) {
+            const nameKey = (prod.name || '').trim().toLowerCase();
+            if (nameKey && !seenNames.has(nameKey)) {
+              seenNames.add(nameKey);
+              uniqueProducts.push(prod);
+            }
+          }
+          setProductsList(uniqueProducts);
         } else {
           console.error("Failed to load products:", await productsRes.text());
         }
@@ -269,12 +280,7 @@ export default function CreateOrder() {
   const [totalNetWeight, setTotalNetWeight] = useState<number | "">("");
   const [totalGrossWeight, setTotalGrossWeight] = useState<number | "">("");
 
-  // New Bank details states
-  const [bankName, setBankName] = useState("State Bank of India");
-  const [bankBranch, setBankBranch] = useState("Erode, Tamil Nadu");
-  const [accountNo, setAccountNo] = useState("43841179923");
-  const [ifscCode, setIfscCode] = useState("SBIN02278");
-  const [swiftCode, setSwiftCode] = useState("SBININBB");
+
 
   // Auto-calculate Total Net Weight & Total Gross Weight
   useEffect(() => {
@@ -310,6 +316,27 @@ export default function CreateOrder() {
 
       const headers: any = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+
+      // Auto-create product if typed manually and doesn't exist
+      const resolvedProductName = product.trim();
+      const existingProduct = productsList.find(p => p.name.trim().toLowerCase() === resolvedProductName.toLowerCase());
+      if (!existingProduct && resolvedProductName) {
+        try {
+          await fetch('/api/products', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              name: resolvedProductName,
+              unit: unit || 'kg',
+              is_active: true,
+              company_id: profile!.company_id
+            })
+          });
+          toast.info(`Auto-created product "${resolvedProductName}" in catalog.`);
+        } catch (err) {
+          console.warn("Failed to auto-create product in catalog, proceeding anyway:", err);
+        }
+      }
 
       // Generate order number EXP-2026-XXX
       const year = new Date().getFullYear();
@@ -352,11 +379,6 @@ export default function CreateOrder() {
           gross_weight_per_carton: grossWeightPerCarton ? Number(grossWeightPerCarton) : null,
           total_net_weight: totalNetWeight ? Number(totalNetWeight) : null,
           total_gross_weight: totalGrossWeight ? Number(totalGrossWeight) : null,
-          bank_name: bankName || null,
-          bank_branch: bankBranch || null,
-          account_no: accountNo || null,
-          ifsc_code: ifscCode || null,
-          swift_code: swiftCode || null,
           created_by: userId,
           status: 'pending',
           payment_status: 'unpaid'
@@ -457,12 +479,15 @@ export default function CreateOrder() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Product *</Label>
-              <Select value={product} onValueChange={setProduct}>
-                <SelectTrigger><SelectValue placeholder="Select Product" /></SelectTrigger>
-                <SelectContent>
-                  {productsList.map(p => <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Input
+                value={product}
+                onChange={(e) => setProduct(e.target.value)}
+                placeholder="Type or select product..."
+                list="products-datalist"
+              />
+              <datalist id="products-datalist">
+                {productsList.map(p => <option key={p.id} value={p.name} />)}
+              </datalist>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -653,34 +678,6 @@ export default function CreateOrder() {
               <Input type="number" step="0.01" value={totalGrossWeight} onChange={e => setTotalGrossWeight(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Calculated automatically" />
             </div>
             
-            <div className="space-y-2 md:col-span-2 pt-4 border-t">
-              <h4 className="font-bold text-sm text-primary">Bank & Payment details (Optional)</h4>
-            </div>
-            <div className="space-y-2">
-              <Label>Bank Name</Label>
-              <Input value={bankName} onChange={e => setBankName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Branch</Label>
-              <Input value={bankBranch} onChange={e => setBankBranch(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Account No</Label>
-              <Input value={accountNo} onChange={e => setAccountNo(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>IFSC Code</Label>
-              <Input value={ifscCode} onChange={e => setIfscCode(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Swift Code</Label>
-              <Input value={swiftCode} onChange={e => setSwiftCode(e.target.value)} />
-            </div>
-
-            <div className="space-y-2 md:col-span-2 pt-4 border-t">
-              <Label>Terms of Payment</Label>
-              <Textarea value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="e.g. 90% advance..." className="h-20" />
-            </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Notes</Label>
               <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Internal notes, etc..." className="h-20" />

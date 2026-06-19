@@ -1,11 +1,17 @@
+import { useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Coins } from "lucide-react";
+import { Loader2, Coins, Edit } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
-const EXCHANGE_RATES: Record<string, number> = {
+const DEFAULT_RATES: Record<string, number> = {
   "USD": 83.50,
   "EUR": 90.65,
   "GBP": 105.78,
@@ -25,8 +31,24 @@ const CURRENCY_NAMES: Record<string, string> = {
 
 export default function Ledger() {
   const { profile } = useAuth();
+  
+  const [rates, setRates] = useState<Record<string, number>>(() => {
+    try {
+      const stored = localStorage.getItem("ledger_exchange_rates");
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error("Failed to parse exchange rates from localStorage", e);
+    }
+    return DEFAULT_RATES;
+  });
+
+  const [editingCurrency, setEditingCurrency] = useState<string | null>(null);
+  const [editingRateValue, setEditingRateValue] = useState("");
+
   const { data: ledger, isLoading } = useQuery({
-    queryKey: ["currency_ledger_live", profile?.company_id],
+    queryKey: ["currency_ledger_live", profile?.company_id, rates],
     queryFn: async () => {
       if (!profile?.company_id) return [];
       const { data, error } = await supabase
@@ -54,11 +76,31 @@ export default function Ledger() {
       return Object.entries(balances).map(([code, bal]) => ({
         id: code,
         name: CURRENCY_NAMES[code] || code,
-        rate: EXCHANGE_RATES[code] || 1.0,
+        rate: rates[code] || 1.0,
         balance: bal
       })).filter(item => item.balance >= 0); // Show all even if 0 for professional look
     }
   });
+
+  const handleOpenEdit = (code: string, currentRate: number) => {
+    setEditingCurrency(code);
+    setEditingRateValue(String(currentRate));
+  };
+
+  const handleSaveRate = () => {
+    if (!editingCurrency) return;
+    const num = Number(editingRateValue);
+    if (isNaN(num) || num <= 0) {
+      toast.error("Please enter a valid rate greater than 0");
+      return;
+    }
+
+    const updatedRates = { ...rates, [editingCurrency]: num };
+    setRates(updatedRates);
+    localStorage.setItem("ledger_exchange_rates", JSON.stringify(updatedRates));
+    setEditingCurrency(null);
+    toast.success(`Exchange rate for ${editingCurrency} updated successfully!`);
+  };
 
   if (isLoading) {
     return (
@@ -90,8 +132,52 @@ export default function Ledger() {
             { key: "rate", header: "Rate (INR)", render: (r) => <span className="tabular-nums text-muted-foreground font-mono">1.00 = ₹{r.rate.toFixed(2)}</span> },
             { key: "bal", header: "Balance", render: (r) => <span className="tabular-nums font-bold text-white">{r.id} {r.balance.toLocaleString()}</span> },
             { key: "inr", header: "INR Equivalent", render: (r) => <span className="tabular-nums font-bold text-gradient-gold text-lg">₹{(r.balance * r.rate).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span> },
+            {
+              key: "actions",
+              header: "Actions",
+              render: (r) => (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2"
+                  onClick={() => handleOpenEdit(r.id, r.rate)}
+                >
+                  <Edit className="h-4 w-4 mr-1" /> Edit Rate
+                </Button>
+              )
+            }
           ]}
         />
+      )}
+
+      {editingCurrency && (
+        <Dialog open={!!editingCurrency} onOpenChange={(open) => !open && setEditingCurrency(null)}>
+          <DialogContent className="max-w-md bg-card border-border text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-primary">Edit Exchange Rate ({editingCurrency})</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4 text-sm">
+              <div className="space-y-1">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Rate to INR (₹)</Label>
+                <Input
+                  type="number"
+                  step="0.0001"
+                  value={editingRateValue}
+                  onChange={e => setEditingRateValue(e.target.value)}
+                  placeholder="e.g. 83.50"
+                />
+              </div>
+            </div>
+            <DialogFooter className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setEditingCurrency(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveRate}>
+                Save Rate
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

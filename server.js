@@ -52,16 +52,19 @@ app.use(express.json())
 
 // Resolve database connection string from env (flexible)
 function getDatabaseUrl() {
+  if (process.env.PG_VPS_ENABLED === 'true') {
+    const host = process.env.PG_HOST
+    if (!host) return null
+    const user = process.env.PG_USER || process.env.PGUSER || 'postgres'
+    const password = process.env.PG_PASSWORD || process.env.PGPASSWORD || ''
+    const database = process.env.PG_DATABASE || process.env.PG_DB || process.env.PGDATABASE || 'postgres'
+    const port = process.env.PG_PORT || '5432'
+    return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`
+  }
+  
   if (process.env.SUPABASE_DB_URL) return process.env.SUPABASE_DB_URL
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL
-
-  const host = process.env.PG_HOST
-  if (!host) return null
-  const user = process.env.PG_USER || process.env.PGUSER || 'postgres'
-  const password = process.env.PG_PASSWORD || process.env.PGPASSWORD || ''
-  const database = process.env.PG_DATABASE || process.env.PG_DB || process.env.PGDATABASE || 'postgres'
-  const port = process.env.PG_PORT || '5432'
-  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`
+  return null
 }
 
 const DB_URL = getDatabaseUrl()
@@ -239,7 +242,7 @@ app.get('/api/drivers', async (req, res) => {
   try {
     const executor = (db && db.query) ? db : pool
     if (!executor) return res.status(500).json({ error: 'Database not configured' })
-    const { rows } = await executor.query("SELECT id, COALESCE(driver_name, name) AS driver_name, COALESCE(license_number, '') AS license_number FROM drivers WHERE is_active = true ORDER BY COALESCE(driver_name, name)")
+    const { rows } = await executor.query("SELECT id, driver_name, COALESCE(license_number, '') AS license_number FROM drivers WHERE is_active = true ORDER BY driver_name")
     res.json(rows)
   } catch (err) {
     console.error('GET /api/drivers error:', err?.message || err)
